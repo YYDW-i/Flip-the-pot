@@ -12,6 +12,9 @@ export default class HUD {
     b.roundedRect(pause.x + 20, pause.y + 18, 7, 28, 3, [0.43, 0.37, 0.3, 1]);
     b.roundedRect(pause.x + 37, pause.y + 18, 7, 28, 3, [0.43, 0.37, 0.3, 1]);
     const next = game.config.TYPES.find(type => type.id === game.spawner.nextType);
+    r.label('订单  ' + game.recipe.current.name, 35, top + 125, 25, '#6f7250', 'left', true);
+    const requirements = game.recipe.current.ingredients.map(need => game.config.TYPES.find(t => t.id === need.type).name + ' Lv' + need.level).join(' + ');
+    r.label(requirements, 35, top + 160, 22, '#8b7b66');
     r.label('下一份：' + next.name, r.camera.width - 42, top + 128, 24, '#80725e', 'right');
     if (game.combo.count > 1) r.label(game.combo.count + ' 连击', r.camera.width / 2, top + 215, 36, '#d95632', 'center', true, 1, 1 + game.combo.pulse);
   }

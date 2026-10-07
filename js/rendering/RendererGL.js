@@ -92,6 +92,18 @@ export default class RendererGL {
       this.drawIngredient(body);
     }
     this.particleRenderer.render(this.batch, game.particles); this.batch.root(0, 0);
+    for (const dish of game.particles.dishes) {
+      const alpha = Math.min(1, dish.life * 3), b = this.batch;
+      b.ellipse(dish.x, dish.y + 6, 74, 31, [0.52, 0.41, 0.28, alpha * 0.12]);
+      b.ellipse(dish.x, dish.y, 73, 29, [1, 0.99, 0.9, alpha]);
+      b.ellipse(dish.x, dish.y - 3, 59, 20, [0.97, 0.83, 0.47, alpha]);
+      for (let i = 0; i < 6; i++) {
+        const type = dish.recipe.ingredients[i % 2].type, c = this.config.TYPES.find(t => t.id === type).color;
+        b.ellipse(dish.x - 38 + i * 15, dish.y - 7 + (i % 2) * 10, 11, 8, [c[0], c[1], c[2], alpha]);
+      }
+      b.line(dish.x - 12, dish.y - 40, dish.x - 17, dish.y - 58, 3, [1, 1, 1, alpha * 0.5]);
+      b.line(dish.x + 12, dish.y - 44, dish.x + 17, dish.y - 62, 3, [1, 1, 1, alpha * 0.5]);
+    }
     if (game.state === State.PLAYING && game.spawner.countdown < game.config.SPAWN_PREVIEW_TIME) {
       const x = game.spawner.nextX, y = camera.hudTop + 185;
       this.batch.circle(x, y + 14, 26, [1, 0.55, 0.25, 0.18]);

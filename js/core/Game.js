@@ -16,6 +16,7 @@ import Random from '../utils/Random.js';
 import State from './GameState.js';
 import Ingredient from '../entities/Ingredient.js';
 import SpawnSystem from '../systems/SpawnSystem.js';
+import RecipeSystem from '../systems/RecipeSystem.js';
 import HUD from '../ui/HUD.js';
 import MenuScreen from '../ui/MenuScreen.js';
 import TutorialOverlay from '../ui/TutorialOverlay.js';
@@ -41,9 +42,11 @@ export default class Game {
     this.haptics = new HapticManager(this.config, api); this.audio = new AudioManager(api);
     this.saveSystem = new SaveSystem(this.config, this.pot, this.score);
     this.merge = new MergeSystem(this.world, this.score, this.config, this.combo);
+    this.recipe = new RecipeSystem(this.world, this.score, this.combo, this.config);
+    this.recipe.onRecipe = (recipe, x, y, points, air) => this.recipeFeedback(recipe, x, y, points, air);
     this.merge.onMerge = (body, points, air) => this.mergeFeedback(body, points, air);
     this.saveSystem.onSave = (body, points) => { this.particles.text('救回来了！ +' + points, body.position.x, body.position.y - 65, '#3e8561'); this.haptics.light(); };
-    this.world.onPair = (a, b) => this.merge.collide(a, b);
+    this.world.onPair = (a, b) => this.recipe.collide(a, b) || this.merge.collide(a, b);
     this.world.onLand = (body, impact, index) => {
       this.saveSystem.land(body, index, this.world.time);
       if (this.state === State.TUTORIAL) this.tutorial.land(body, index, this.world.time);
@@ -67,6 +70,7 @@ export default class Game {
   active() { return (this.state === State.PLAYING || this.state === State.TUTORIAL) && !this.endingTime; }
   resetRun() {
     this.world.reset(); this.score.reset(); this.combo.reset(); this.particles.reset();
+    this.recipe.reset();
     this.pot = new Pot(this.config, this.camera.width, this.camera.height, this.camera.safeBottom);
     this.world.pot = this.pot; this.saveSystem.pot = this.pot;
     this.lostCount = 0; this.runDuration = 0; this.endingTime = 0; this.result = null;
@@ -132,6 +136,12 @@ export default class Game {
     if (body.level >= 4) this.particles.shake(3);
     if (this.combo.airStreak >= 2) this.particles.text('完美颠锅！', this.camera.width / 2, this.camera.hudTop + 180, '#d65a2a', 38);
     if (this.combo.count >= 4 && this.world.time - this.lastSlowTime > this.config.SLOWMO_COOLDOWN) { this.slowTime = this.config.SLOWMO_DURATION; this.lastSlowTime = this.world.time; }
+  }
+  recipeFeedback(recipe, x, y, points, air) {
+    this.particles.dish(recipe, x, y); this.particles.burst(x, y, [1, 0.75, 0.3, 1], air ? 65 : 40, 360);
+    this.particles.ring(x, y, 65, [1, 0.72, 0.22, 1]); this.particles.shake(4, 0.15);
+    this.particles.text((air ? '空中料理！' : recipe.name + '出锅！') + ' +' + points, x, y - 85, '#c5562f', 32);
+    this.audio.playRecipe(); this.haptics.light();
   }
   update(dt) {
     if (this.state !== State.PLAYING && this.state !== State.TUTORIAL) return;
