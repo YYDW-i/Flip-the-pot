@@ -1,34 +1,21 @@
-# 示例游戏
+# 颠个锅 · PanToss
 
-示例相关说明查阅[新手教程](https://developers.weixin.qq.com/minigame/dev/guide/develop/start.html)
+在现有微信小游戏工程中实现的竖屏物理合成游戏。单指拖锅、连续力度颠锅、移动接锅，通过真实碰撞完成升级、空中连击和三份料理订单。
 
-## 源码目录介绍
+客户端使用原生 JavaScript、wx API 和 WebGL，无第三方游戏引擎，无 npm 运行依赖。云服务未配置时也可以完整游玩。
 
+直接用微信开发者工具打开本目录并编译。完整运行步骤、目录说明、调参、云部署和验收结果见 [README_DEV.md](README_DEV.md)，实际检查记录见 [验收记录](docs/验收记录.md)。当前云环境仍为占位值，在 `js/config/env.js` 中替换 `YOUR_CLOUD_ENV_ID` 后部署三个云函数。
+
+本地 WebGL 实际画面（浏览器模拟 wx 接口，不代表微信真机验收）：
+
+![首页](docs/previews/menu.png)
+![空中合成和料理](docs/previews/gameplay.png)
+
+开发检查使用 Node.js 18 或更新版本，无需安装依赖：
+
+```powershell
+node scripts/check.mjs
+node --test tests/*.test.mjs
 ```
-├── audio                                      // 音频资源
-├── images                                     // 图片资源
-├── js
-│   ├── base
-│   │   ├── animatoin.js                       // 帧动画的简易实现
-│   │   ├── pool.js                            // 对象池的简易实现
-│   │   └── sprite.js                          // 游戏基本元素精灵类
-│   ├── libs
-│   │   └── tinyemitter.js                     // 事件监听和触发
-│   ├── npc
-│   │   └── enemy.js                           // 敌机类
-│   ├── player
-│   │   ├── bullet.js                          // 子弹类
-│   │   └── index.js                           // 玩家类
-│   ├── runtime
-│   │   ├── background.js                      // 背景类
-│   │   ├── gameinfo.js                        // 用于展示分数和结算界面
-│   │   └── music.js                           // 全局音效管理器
-│   ├── databus.js                             // 管控游戏状态
-│   ├── main.js                                // 游戏入口主函数
-│   └── render.js                              // 基础渲染信息
-├── .eslintrc.js                               // 代码规范
-├── game.js                                    // 游戏逻辑主入口
-├── game.json                                  // 游戏运行时配置
-├── project.config.json                        // 项目配置
-└── project.private.config.json                // 项目个人配置
-```
+
+已按阶段 A—G、验收修复和文档分别提交中文 Git 版本，未推送 GitHub。
