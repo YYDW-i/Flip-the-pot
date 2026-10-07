@@ -29,7 +29,8 @@
   "compileType": "game",
   "libVersion": "latest",
   "appid": "wx41e18e76f0876f80",
-  "projectname": "quickstart",
+  "projectname": "PanToss",
+  "cloudfunctionRoot": "cloudfunctions/",
   "condition": {
     "search": {
       "current": -1,
@@ -50,7 +51,18 @@
   },
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": "tests" },
+      { "type": "folder", "value": "scripts" },
+      { "type": "folder", "value": "docs" },
+      { "type": "folder", "value": "audio" },
+      { "type": "folder", "value": "images" },
+      { "type": "folder", "value": ".qa" },
+      { "type": "folder", "value": "cloudfunctions" },
+      { "type": "file", "value": "README_DEV.md" },
+      { "type": "file", "value": "README.md" },
+      { "type": "file", "value": "package.json" }
+    ],
     "include": []
   },
   "isGameTourist": false,

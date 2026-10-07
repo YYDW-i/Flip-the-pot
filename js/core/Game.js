@@ -13,6 +13,8 @@ import ParticleSystem from '../systems/ParticleSystem.js';
 import HapticManager from '../services/HapticManager.js';
 import AudioManager from '../services/AudioManager.js';
 import LocalSaveService from '../services/LocalSaveService.js';
+import CloudService from '../services/CloudService.js';
+import { validateRemoteConfig } from '../config/remoteConfig.js';
 import Random from '../utils/Random.js';
 import State from './GameState.js';
 import Ingredient from '../entities/Ingredient.js';
@@ -67,16 +69,24 @@ export default class Game {
     if (api.onShow) api.onShow(this.onShow);
     if (api.onWindowResize) api.onWindowResize(this.onResize);
     this.resetRun(); this.setState(State.MENU);
+    this.cloud = new CloudService(api);
+    this.cloud.bootstrap().then(data => {
+      this.bestScore = this.local.mergeProfile(data.profile).bestScore;
+      // 远程参数只在下一局重置时应用，不能改变正在进行的物理局面。
+      this.pendingConfig = validateRemoteConfig(data.config, this.config);
+    }).catch(() => { console.warn('PanToss 云启动检查失败，继续本地游戏'); });
     if (options.autoStart !== false) this.loop.start();
   }
   setState(state) { this.state = state; if (this.input) this.input.cancel(); }
   active() { return (this.state === State.PLAYING || this.state === State.TUTORIAL) && !this.endingTime; }
   resetRun() {
+    if (this.pendingConfig) { Object.assign(this.config, this.pendingConfig); this.pendingConfig = null; }
     this.world.reset(); this.score.reset(); this.combo.reset(); this.particles.reset();
     this.recipe.reset();
     this.pot = new Pot(this.config, this.camera.width, this.camera.height, this.camera.safeBottom);
     this.world.pot = this.pot; this.saveSystem.pot = this.pot;
     this.lostCount = 0; this.runDuration = 0; this.endingTime = 0; this.result = null;
+    this.runId = Date.now().toString(36) + '-' + this.seed.toString(36) + '-' + this.runCounter;
     this.slowTime = 0; this.lastSlowTime = -10; this.settingsOpen = false;
     this.spawner.reset((this.seed + this.runCounter++) >>> 0); this.tutorial.reset();
     this.seedIngredients();
@@ -187,9 +197,11 @@ export default class Game {
   }
   finishRun() {
     if (this.result) return;
-    this.result = { score: this.score.score, maxCombo: this.combo.maxCombo, duration: Math.max(0.01, this.runDuration), recipesCompleted: this.score.recipesCompleted };
+    this.result = { runId: this.runId, score: this.score.score, maxCombo: this.combo.maxCombo, duration: Math.max(0.01, this.runDuration), recipesCompleted: this.score.recipesCompleted };
     this.bestScore = this.local.recordRun(this.result).bestScore;
     this.audio.playGameOver(); this.setState(State.GAME_OVER);
+    // 一局只提交一次；网络失败保留本地结果，不阻塞再开一局。
+    this.cloud.saveRunResult(this.result).then(profile => { this.bestScore = this.local.mergeProfile(profile).bestScore; }).catch(() => {});
   }
   resize() {
     this.pause(); this.input.cancel(); const oldY = this.pot.baseY;
