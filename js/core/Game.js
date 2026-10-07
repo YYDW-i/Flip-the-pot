@@ -12,6 +12,7 @@ import SaveSystem from '../systems/SaveSystem.js';
 import ParticleSystem from '../systems/ParticleSystem.js';
 import HapticManager from '../services/HapticManager.js';
 import AudioManager from '../services/AudioManager.js';
+import LocalSaveService from '../services/LocalSaveService.js';
 import Random from '../utils/Random.js';
 import State from './GameState.js';
 import Ingredient from '../entities/Ingredient.js';
@@ -27,7 +28,8 @@ export default class Game {
   constructor(api = wx, options = {}) {
     this.api = api; this.config = Object.assign({}, config);
     this.state = State.BOOT; this.visualTime = 0; this.runCounter = 0; this.seed = options.seed === undefined ? Date.now() >>> 0 : options.seed;
-    this.bestScore = 0; this.tutorialCompleted = false; this.settingsOpen = false;
+    this.local = new LocalSaveService(api);
+    this.bestScore = this.local.data.bestScore; this.tutorialCompleted = this.local.data.tutorialCompleted; this.settingsOpen = false;
     this.canvas = api.createCanvas();
     this.camera = new Camera(this.canvas, this.config, api);
     this.renderer = new RendererGL(this.canvas, this.camera, this.config, api);
@@ -40,6 +42,7 @@ export default class Game {
     this.combo = new ComboSystem(this.config); this.slowTime = 0; this.lastSlowTime = -10;
     this.particles = new ParticleSystem(this.config, new Random(711));
     this.haptics = new HapticManager(this.config, api); this.audio = new AudioManager(api);
+    this.audio.enabled = this.local.data.soundEnabled; this.haptics.enabled = this.local.data.hapticEnabled;
     this.saveSystem = new SaveSystem(this.config, this.pot, this.score);
     this.merge = new MergeSystem(this.world, this.score, this.config, this.combo);
     this.recipe = new RecipeSystem(this.world, this.score, this.combo, this.config);
@@ -84,7 +87,7 @@ export default class Game {
     initial.forEach((type, i) => this.world.add(type, 1, this.pot.positionX + (i - (initial.length - 1) / 2) * this.config.INITIAL_SPACING, this.pot.positionY - 8));
   }
   start(forceTutorial = false) { this.resetRun(); this.setState(forceTutorial || !this.tutorialCompleted ? State.TUTORIAL : State.PLAYING); }
-  completeTutorial() { this.tutorialCompleted = true; this.start(); }
+  completeTutorial() { this.tutorialCompleted = true; this.local.save({ tutorialCompleted: true }); this.start(); }
   pause() { if (this.state === State.PLAYING || this.state === State.TUTORIAL) { this.pauseReturn = this.state; this.setState(State.PAUSED); } }
   resume() { if (this.state === State.PAUSED) { this.loop.resetClock(); this.setState(this.pauseReturn || State.PLAYING); } }
   dragStart(point) {
@@ -104,6 +107,7 @@ export default class Game {
         if (inside(point, s.sound)) this.audio.enabled = !this.audio.enabled;
         else if (inside(point, s.haptic)) { this.haptics.enabled = !this.haptics.enabled; this.haptics.light(); }
         else if (inside(point, s.close)) this.settingsOpen = false;
+        this.local.save({ soundEnabled: this.audio.enabled, hapticEnabled: this.haptics.enabled });
         return;
       }
       const l = this.menu.layout(this.camera);
@@ -184,7 +188,7 @@ export default class Game {
   finishRun() {
     if (this.result) return;
     this.result = { score: this.score.score, maxCombo: this.combo.maxCombo, duration: Math.max(0.01, this.runDuration), recipesCompleted: this.score.recipesCompleted };
-    this.bestScore = Math.max(this.bestScore, this.result.score);
+    this.bestScore = this.local.recordRun(this.result).bestScore;
     this.audio.playGameOver(); this.setState(State.GAME_OVER);
   }
   resize() {
