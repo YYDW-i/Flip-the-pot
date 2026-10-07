@@ -19,7 +19,20 @@ const config = {
   AIR_DRAG: 0.12, ANGULAR_DRAG: 1.5, CONTACT_SLOP: 0.15,
   AIR_CONTACT_DELAY: 0.12, INITIAL_MERGE_COOLDOWN: 0.7,
   MAX_INGREDIENTS: 30, MAX_PARTICLES: 180,
-  LEVELS: [{ radius: 23, mass: 1, score: 10 }],
-  TYPES: [{ id: 'tomato', name: '番茄', color: [0.95, 0.27, 0.24, 1] }]
+  MAX_LEVEL: 5, MERGE_COOLDOWN: 0.22,
+  LEVELS: [
+    { radius: 23, mass: 1, score: 10 },
+    { radius: 31, mass: 1.85, score: 20 },
+    { radius: 40, mass: 3, score: 40 },
+    { radius: 51, mass: 4.5, score: 80 },
+    { radius: 64, mass: 6.6, score: 160 }
+  ],
+  INITIAL_INGREDIENTS: ['tomato', 'egg', 'mushroom', 'tomato', 'egg'],
+  INITIAL_SPACING: 58,
+  TYPES: [
+    { id: 'tomato', name: '番茄', color: [0.95, 0.27, 0.24, 1] },
+    { id: 'egg', name: '鸡蛋', color: [1, 0.75, 0.24, 1] },
+    { id: 'mushroom', name: '蘑菇', color: [0.69, 0.39, 0.57, 1] }
+  ]
 };
 export default config;
