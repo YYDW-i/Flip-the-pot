@@ -1,5 +1,7 @@
 import PrimitiveBatch from './PrimitiveBatch.js';
 import TextTextureCache from './TextTextureCache.js';
+import ParticleRenderer from './ParticleRenderer.js';
+import { clamp } from '../utils/MathUtils.js';
 
 const C = {
   cream: [1, 0.96, 0.89, 1], warm: [0.96, 0.88, 0.74, 1], tile: [1, 0.99, 0.94, 0.45],
@@ -12,6 +14,7 @@ export default class RendererGL {
     this.gl = canvas.getContext('webgl', { alpha: false, antialias: true, depth: false, stencil: false, preserveDrawingBuffer: false });
     if (!this.gl) throw new Error('PanToss 当前设备无法创建 WebGL 上下文');
     this.batch = new PrimitiveBatch(this.gl); this.text = new TextTextureCache(this.gl, api);
+    this.particleRenderer = new ParticleRenderer();
     this.gl.enable(this.gl.BLEND); this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
     this.gl.disable(this.gl.DEPTH_TEST);
   }
@@ -67,10 +70,23 @@ export default class RendererGL {
     const gl = this.gl, camera = this.camera;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height); gl.clearColor(1, 0.95, 0.86, 1); gl.clear(gl.COLOR_BUFFER_BIT);
     this.batch.begin(camera.width, camera.height); this.text.begin(camera.width, camera.height);
-    this.background(game.pot); this.drawPot(game.pot);
-    for (const body of game.world.bodies) if (body.alive) this.drawIngredient(body);
+    this.background(game.pot);
+    const shake = game.particles.shakePower * Math.min(1, game.particles.shakeTime * 8);
+    this.batch.root(Math.sin(game.world.time * 90) * shake, Math.cos(game.world.time * 110) * shake * 0.5);
+    this.drawPot(game.pot);
+    for (const body of game.world.bodies) {
+      if (!body.alive) continue;
+      if (body.danger) this.batch.circle(clamp(body.position.x, 24, camera.width - 24), clamp(body.position.y, camera.hudTop + 150, camera.height - 50), body.radius + 8, [1, 0.3, 0.15, 0.16 + Math.sin(game.world.time * 12) * 0.06]);
+      this.drawIngredient(body);
+    }
+    this.particleRenderer.render(this.batch, game.particles); this.batch.root(0, 0);
     this.label('颠个锅', 40, camera.hudTop + 24, 42, '#514236', 'left', true);
     this.label('分数', 44, camera.hudTop + 80, 23); this.number(game.score.score, 115, camera.hudTop + 80);
+    if (game.combo.count > 1) {
+      this.label('连击', 620, camera.hudTop + 28, 22, '#cc5835', 'center');
+      this.number(game.combo.count, 620, camera.hudTop + 77, 42, '#cc5835', 'center');
+    }
+    for (const text of game.particles.texts) this.label(text.text, text.x, text.y, text.size, text.color, 'center', true, Math.min(1, text.life * 3), 1 + Math.max(0, text.life - 0.75) * 0.6);
     this.label('左右拖动 · 向上甩动 · 移锅接住', camera.width / 2, camera.height - camera.safeBottom - 68, 25, '#fff7e8', 'center');
     this.batch.flush();
   }

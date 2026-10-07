@@ -25,10 +25,11 @@ export default class PhysicsWorld {
     for (const body of this.pending) this.bodies.push(body);
     this.pending.length = 0;
   }
-  step(dt) {
+  step(dt, controlDt = dt) {
     const c = this.config, subdt = dt / c.PHYSICS_SUBSTEPS;
     for (let step = 0; step < c.PHYSICS_SUBSTEPS; step++) {
-      this.time += subdt; this.pot.update(subdt);
+      // 慢动作只改变食材时间，锅仍按实时输入跟随。
+      this.time += subdt; this.pot.update(controlDt / c.PHYSICS_SUBSTEPS);
       for (const body of this.bodies) {
         if (!body.alive) continue;
         body.previousX = body.position.x; body.previousY = body.position.y;
@@ -56,10 +57,11 @@ export default class PhysicsWorld {
         }
         for (const body of this.bodies) {
           if (!body.alive) continue;
-          for (const segment of this.pot.segments) {
+          for (let segmentIndex = 0; segmentIndex < this.pot.segments.length; segmentIndex++) {
+            const segment = this.pot.segments[segmentIndex];
             const impact = circleSegment(body, segment, this.pot, c);
             if (impact < 0) continue;
-            if (body.airborne && impact > 55) { body.squash = Math.min(0.24, impact / 2800); this.onLand(body, impact); }
+            if (body.airborne && impact > 55) { body.squash = Math.min(0.24, impact / 2800); this.onLand(body, impact, segmentIndex); }
             body.lastPanContactTime = this.time; body.airborne = false;
           }
         }

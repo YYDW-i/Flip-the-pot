@@ -12,7 +12,8 @@ export default class PrimitiveBatch {
     this.unitCircle = [];
     for (let i = 0; i <= 32; i++) this.unitCircle.push([Math.cos(i * Math.PI / 16), Math.sin(i * Math.PI / 16)]);
   }
-  begin(width, height) { this.width = width; this.height = height; this.count = 0; this.transform(); }
+  begin(width, height) { this.width = width; this.height = height; this.count = 0; this.root(0, 0); this.transform(); }
+  root(x, y) { this.rootX = x; this.rootY = y; }
   transform(x = 0, y = 0, rotation = 0, sx = 1, sy = sx) {
     const c = Math.cos(rotation), s = Math.sin(rotation);
     this.tx = x; this.ty = y; this.a = c * sx; this.b = s * sx; this.c = -s * sy; this.d = c * sy;
@@ -20,7 +21,7 @@ export default class PrimitiveBatch {
   vertex(x, y, color) {
     if ((this.count + 1) * 6 >= this.data.length) this.flush();
     const k = this.count++ * 6, data = this.data;
-    data[k] = this.tx + x * this.a + y * this.c; data[k + 1] = this.ty + x * this.b + y * this.d;
+    data[k] = this.rootX + this.tx + x * this.a + y * this.c; data[k + 1] = this.rootY + this.ty + x * this.b + y * this.d;
     data[k + 2] = color[0]; data[k + 3] = color[1]; data[k + 4] = color[2]; data[k + 5] = color[3] === undefined ? 1 : color[3];
   }
   triangle(ax, ay, bx, by, cx, cy, color = WHITE) { this.vertex(ax, ay, color); this.vertex(bx, by, color); this.vertex(cx, cy, color); }
