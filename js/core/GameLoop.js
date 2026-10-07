@@ -1,7 +1,7 @@
 import { clamp } from '../utils/MathUtils.js';
 
 export default class GameLoop {
-  constructor(config, update, render, raf = requestAnimationFrame, caf = cancelAnimationFrame) {
+  constructor(config, update, render, raf = callback => requestAnimationFrame(callback), caf = id => cancelAnimationFrame(id)) {
     this.config = config; this.update = update; this.render = render;
     this.raf = raf; this.caf = caf; this.running = false;
     this.accumulator = 0; this.lastTime = null;
@@ -19,7 +19,8 @@ export default class GameLoop {
   frame(timestamp) {
     if (!this.running) return;
     const now = Number.isFinite(timestamp) ? timestamp : Date.now();
-    this.advance(this.lastTime === null ? 0 : (now - this.lastTime) / 1000);
+    try { this.advance(this.lastTime === null ? 0 : (now - this.lastTime) / 1000); }
+    catch (error) { this.stop(); console.error('PanToss 核心循环发生不可恢复错误', error); if (this.onFatal) this.onFatal(error); return; }
     this.lastTime = now;
     this.frameId = this.raf(this.frame);
   }

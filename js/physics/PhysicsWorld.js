@@ -5,7 +5,7 @@ import { clamp } from '../utils/MathUtils.js';
 export default class PhysicsWorld {
   constructor(config, pot) {
     this.config = config; this.pot = pot; this.reset();
-    this.onLand = () => {}; this.onPair = () => false; this.onCollision = () => {};
+    this.onLand = () => {}; this.onPanContact = () => {}; this.onPair = () => false; this.onCollision = () => {};
   }
   reset() { this.bodies = []; this.pending = []; this.time = 0; this.nextId = 1; }
   add(type, level, x, y) {
@@ -61,6 +61,7 @@ export default class PhysicsWorld {
             const segment = this.pot.segments[segmentIndex];
             const impact = circleSegment(body, segment, this.pot, c);
             if (impact < 0) continue;
+            if (iteration === 0) this.onPanContact(body, impact, segmentIndex);
             if (body.airborne && impact > 55) { body.squash = Math.min(0.24, impact / 2800); this.onLand(body, impact, segmentIndex); }
             body.lastPanContactTime = this.time; body.airborne = false;
           }

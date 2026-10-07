@@ -19,6 +19,13 @@ for (const file of files) {
     }
   }
   if (file.endsWith('.json')) { try { JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { console.error(file, e.message); errors++; } }
+  if (file.endsWith('.html')) {
+    const source = fs.readFileSync(file, 'utf8');
+    for (const match of source.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)) {
+      const result = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: match[1], encoding: 'utf8' });
+      if (result.status !== 0) { console.error(file, result.stderr); errors++; }
+    }
+  }
 }
 if (errors) process.exitCode = 1;
 else console.log(`语法、JSON、模块路径检查通过（${files.length} 个文件）`);

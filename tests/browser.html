@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>PanToss 本地 WebGL 验证</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#ece9e2;font-family:system-ui,sans-serif;color:#514236;display:flex;gap:28px;padding:24px;align-items:flex-start}canvas#game{width:375px;height:667px;border-radius:22px;box-shadow:0 10px 40px #3e33252a;touch-action:none;flex-shrink:0}aside{width:320px}h1{font-size:22px}p{line-height:1.6;font-size:14px}button,select{border:1px solid #cdbda7;border-radius:9px;background:#fff8eb;padding:10px;margin:0 4px 8px 0;color:#514236;cursor:pointer}pre{font-size:12px;white-space:pre-wrap;background:#fff8eb;border-radius:12px;padding:12px}#errors{color:#a73d2a}
+</style></head><body><canvas id="game"></canvas><aside>
+<h1>PanToss 本地 WebGL 验证</h1><p>与小游戏共用完整核心代码。本页只模拟 wx 接口，主画布使用真实 WebGL。鼠标按住画布下半部分即可拖锅、上甩。</p>
+<select id="device"><option value="375,667">标准屏 375 × 667</option><option value="390,844">长屏 390 × 844</option><option value="320,568">小屏 320 × 568</option><option value="768,1024">平板竖屏 768 × 1024</option></select><br>
+<button id="start">开始 / 重开</button><button id="skip">结束练习</button><button id="pause">暂停 / 继续</button><button id="menu">回首页</button><br>
+<button id="light">轻颠</button><button id="strong">重颠</button><button id="air">演示空中合成</button><button id="recipe">演示订单</button><button id="lose">丢失三份</button>
+<button id="capture">保存画面</button><p id="capture-status"></p>
+<pre id="status"></pre><pre id="errors"></pre></aside>
+<script type="module">
+import Game from '../js/core/Game.js';
+import State from '../js/core/GameState.js';
+const canvas = document.querySelector('#game'), listeners = new Map(); let width = 375, height = 667;
+const api = {
+  createCanvas: () => canvas, createOffscreenCanvas: () => document.createElement('canvas'),
+  getWindowInfo: () => ({windowWidth:width,windowHeight:height,pixelRatio:devicePixelRatio,safeArea:{top:24,bottom:height-20}}),
+  getMenuButtonBoundingClientRect: () => ({bottom:52}),
+  getStorageSync: key => JSON.parse(localStorage.getItem(key) || 'null'), setStorageSync: (key,value) => localStorage.setItem(key,JSON.stringify(value)),
+  vibrateShort() {}
+};
+for(const name of ['TouchStart','TouchMove','TouchEnd','TouchCancel','Hide','Show','WindowResize']){
+  listeners.set(name,new Set());api['on'+name]=fn=>listeners.get(name).add(fn);api['off'+name]=fn=>listeners.get(name).delete(fn);
+}
+const emit=(name,event)=>{for(const fn of listeners.get(name))fn(event)};
+let active = false;
+const touch=e=>{const r=canvas.getBoundingClientRect();return {identifier:e.pointerId,clientX:(e.clientX-r.left)*width/r.width,clientY:(e.clientY-r.top)*height/r.height}};
+canvas.addEventListener('pointerdown',e=>{active=true;canvas.setPointerCapture(e.pointerId);emit('TouchStart',{touches:[touch(e)]})});
+canvas.addEventListener('pointermove',e=>{if(active)emit('TouchMove',{touches:[touch(e)]})});
+canvas.addEventListener('pointerup',e=>{if(active){emit('TouchEnd',{touches:[],changedTouches:[touch(e)]});active=false}});
+canvas.addEventListener('pointercancel',()=>{active=false;emit('TouchCancel',{})});
+document.addEventListener('visibilitychange',()=>emit(document.hidden?'Hide':'Show',{}));
+const errors=[];window.addEventListener('error',e=>{errors.push(e.message);document.querySelector('#errors').textContent=errors.join('\n')});
+window.addEventListener('unhandledrejection',e=>{errors.push(String(e.reason));document.querySelector('#errors').textContent=errors.join('\n')});
+const game=new Game(api);window.qaGame=game;
+document.querySelector('#device').onchange=e=>{[width,height]=e.target.value.split(',').map(Number);const scale=Math.min(1,667/height);canvas.style.width=width*scale+'px';canvas.style.height=height*scale+'px';emit('WindowResize',{});};
+document.querySelector('#start').onclick=()=>game.start();document.querySelector('#skip').onclick=()=>game.completeTutorial();
+document.querySelector('#pause').onclick=()=>game.state===State.PAUSED?game.resume():game.pause();
+document.querySelector('#menu').onclick=()=>game.setState(State.MENU);
+document.querySelector('#light').onclick=()=>game.toss({speed:420,velocityX:0});document.querySelector('#strong').onclick=()=>game.toss({speed:2000,velocityX:0});
+function pair(types,level){
+  if(!game.active())game.completeTutorial();const x=game.camera.width/2,y=game.camera.height*.47;
+  for(let i=0;i<2;i++){const b=game.world.add(types[i],level,x-20+i*40,y);if(!b)continue;b.velocity.x=i?-180:180;b.velocity.y=-200;b.airborne=true;b.lastPanContactTime=-10;b.mergeCooldown=0;}
+}
+document.querySelector('#air').onclick=()=>pair(['tomato','tomato'],1);
+document.querySelector('#recipe').onclick=()=>{const req=game.recipe.current.ingredients;pair(req.map(r=>r.type),Math.max(...req.map(r=>r.level)))};
+document.querySelector('#lose').onclick=()=>{if(!game.active())game.completeTutorial();for(let i=0;i<3;i++){const b=game.world.add('egg',1,375,game.camera.height+300);if(b)b.velocity.y=100;}};
+document.querySelector('#capture').onclick=()=>requestAnimationFrame(()=>{game.renderer.render(game);canvas.toBlob(async blob=>{try{const response=await fetch('/qa/capture',{method:'POST',body:blob});document.querySelector('#capture-status').textContent=await response.text();}catch(error){document.querySelector('#capture-status').textContent=String(error);}},'image/png');});
+setInterval(()=>{document.querySelector('#status').textContent=JSON.stringify({state:game.state,score:game.score.score,combo:game.combo.count,lost:game.lostCount,ingredients:game.world.bodies.length,particles:game.particles.count,textures:game.renderer.text.cache.size,glError:game.renderer.gl.getError(),tutorialStep:game.tutorial.step,potX:Math.round(game.pot.positionX),errorCount:errors.length},null,2)},200);
+</script></body></html>

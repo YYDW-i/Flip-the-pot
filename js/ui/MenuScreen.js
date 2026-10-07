@@ -10,10 +10,10 @@ export default class MenuScreen {
     return { panel: p, sound: { x: p.x + 55, y: p.y + 108, w: p.w - 110, h: 66 }, haptic: { x: p.x + 55, y: p.y + 193, w: p.w - 110, h: 66 }, close: { x: p.x + 100, y: p.y + 305, w: p.w - 200, h: 75 } };
   }
   render(r, game) {
-    const h = r.camera.height, top = r.camera.safeTop, layout = this.layout(r.camera);
-    r.label('颠个锅', 375, top + h * 0.16, 76, '#443b32', 'center', true);
-    r.label('颠起来，接住你的下一次连锁', 375, top + h * 0.225, 27, '#8c785f', 'center');
-    r.drawMenuHero(game, h * 0.47);
+    const h = r.camera.height, top = r.camera.safeTop, usable = h - top - r.camera.safeBottom, layout = this.layout(r.camera);
+    r.label('颠个锅', 375, top + usable * 0.16, 76, '#443b32', 'center', true);
+    r.label('颠起来，接住你的下一次连锁', 375, top + usable * 0.225, 27, '#8c785f', 'center');
+    r.drawMenuHero(game, top + usable * 0.46);
     r.label('最高分', 375, layout.start.y - 75, 23, '#8c785f', 'center');
     r.number(game.bestScore, 375, layout.start.y - 38, 38, '#514236', 'center');
     button(r, layout.start, '开始颠锅'); button(r, layout.help, '玩法', false); button(r, layout.settings, '设置', false);

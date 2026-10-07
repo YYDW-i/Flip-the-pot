@@ -28,7 +28,7 @@ import { inside } from '../utils/MathUtils.js';
 
 export default class Game {
   constructor(api = wx, options = {}) {
-    this.api = api; this.config = Object.assign({}, config);
+    this.api = api; this.config = Object.assign({}, config); this.disposed = false;
     this.state = State.BOOT; this.visualTime = 0; this.runCounter = 0; this.seed = options.seed === undefined ? Date.now() >>> 0 : options.seed;
     this.local = new LocalSaveService(api);
     this.bestScore = this.local.data.bestScore; this.tutorialCompleted = this.local.data.tutorialCompleted; this.settingsOpen = false;
@@ -52,9 +52,11 @@ export default class Game {
     this.merge.onMerge = (body, points, air) => this.mergeFeedback(body, points, air);
     this.saveSystem.onSave = (body, points) => { this.particles.text('救回来了！ +' + points, body.position.x, body.position.y - 65, '#3e8561'); this.haptics.light(); };
     this.world.onPair = (a, b) => this.recipe.collide(a, b) || this.merge.collide(a, b);
-    this.world.onLand = (body, impact, index) => {
+    this.world.onPanContact = (body, impact, index) => {
       this.saveSystem.land(body, index, this.world.time);
       if (this.state === State.TUTORIAL) this.tutorial.land(body, index, this.world.time);
+    };
+    this.world.onLand = (body, impact) => {
       this.audio.playLand(); if (impact > 400) this.particles.shake(2, 0.08);
     };
     this.world.onCollision = (a, b) => this.particles.burst((a.position.x + b.position.x) / 2, (a.position.y + b.position.y) / 2, [1, 0.85, 0.57, 1], 3, 90);
@@ -62,6 +64,9 @@ export default class Game {
       dragStart: p => this.dragStart(p), dragMove: (p, data) => this.dragMove(p, data), tap: p => this.tap(p)
     }, api);
     this.loop = new GameLoop(this.config, dt => this.update(dt), dt => { this.visualTime += dt; this.renderer.render(this); }, options.raf, options.caf);
+    this.loop.onFatal = error => {
+      try { if (api.showModal) api.showModal({ title: '运行异常', content: '游戏已停止，请重新进入。详情见开发者工具控制台：' + error.message, showCancel: false }); } catch (e) {}
+    };
     this.onHide = () => { this.pause(); this.input.cancel(); this.audio.stop(); this.loop.stop(); };
     this.onShow = () => { this.input.cancel(); this.loop.start(); };
     this.onResize = () => this.resize();
@@ -71,6 +76,7 @@ export default class Game {
     this.resetRun(); this.setState(State.MENU);
     this.cloud = new CloudService(api);
     this.cloud.bootstrap().then(data => {
+      if (this.disposed) return;
       this.bestScore = this.local.mergeProfile(data.profile).bestScore;
       // 远程参数只在下一局重置时应用，不能改变正在进行的物理局面。
       this.pendingConfig = validateRemoteConfig(data.config, this.config);
@@ -201,7 +207,7 @@ export default class Game {
     this.bestScore = this.local.recordRun(this.result).bestScore;
     this.audio.playGameOver(); this.setState(State.GAME_OVER);
     // 一局只提交一次；网络失败保留本地结果，不阻塞再开一局。
-    this.cloud.saveRunResult(this.result).then(profile => { this.bestScore = this.local.mergeProfile(profile).bestScore; }).catch(() => {});
+    this.cloud.saveRunResult(this.result).then(profile => { if (!this.disposed) this.bestScore = this.local.mergeProfile(profile).bestScore; }).catch(() => {});
   }
   resize() {
     this.pause(); this.input.cancel(); const oldY = this.pot.baseY;
@@ -211,6 +217,7 @@ export default class Game {
     this.loop.resetClock();
   }
   destroy() {
+    this.disposed = true;
     this.loop.stop(); this.input.destroy(); this.renderer.destroy(); this.audio.destroy();
     if (this.api.offHide) this.api.offHide(this.onHide);
     if (this.api.offShow) this.api.offShow(this.onShow);

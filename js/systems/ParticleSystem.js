@@ -17,6 +17,10 @@ export default class ParticleSystem {
     }
   }
   text(text, x, y, color = '#d95632', size = 30) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (!this.texts.some(t => Math.abs(t.x - x) < 150 && Math.abs(t.y - y) < 34 && t.life > 0.45)) break;
+      y -= 38;
+    }
     if (this.texts.length >= this.config.MAX_FLOAT_TEXTS) this.texts.shift();
     this.texts.push({ text, x, y, color, size, life: 0.95, ttl: 0.95 });
   }

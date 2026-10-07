@@ -3,7 +3,7 @@ import ShaderProgram from './ShaderProgram.js';
 const WHITE = [1, 1, 1, 1];
 export default class PrimitiveBatch {
   constructor(gl) {
-    this.gl = gl; this.count = 0; this.data = new Float32Array(6 * 32768);
+    this.gl = gl; this.count = 0; this.data = new Float32Array(6 * 32766);
     this.buffer = gl.createBuffer(); this.transform();
     this.shader = new ShaderProgram(gl,
       'attribute vec2 a_position; attribute vec4 a_color; uniform vec2 u_resolution; varying vec4 v_color; void main(){ vec2 p=a_position/u_resolution*2.0-1.0; gl_Position=vec4(p.x,-p.y,0,1); v_color=a_color; }',
@@ -19,7 +19,7 @@ export default class PrimitiveBatch {
     this.tx = x; this.ty = y; this.a = c * sx; this.b = s * sx; this.c = -s * sy; this.d = c * sy;
   }
   vertex(x, y, color) {
-    if ((this.count + 1) * 6 >= this.data.length) this.flush();
+    if ((this.count + 1) * 6 > this.data.length) this.flush();
     const k = this.count++ * 6, data = this.data;
     data[k] = this.rootX + this.tx + x * this.a + y * this.c; data[k + 1] = this.rootY + this.ty + x * this.b + y * this.d;
     data[k + 2] = color[0]; data[k + 3] = color[1]; data[k + 4] = color[2]; data[k + 5] = color[3] === undefined ? 1 : color[3];

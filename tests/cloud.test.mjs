@@ -6,6 +6,7 @@ import CloudService from '../js/services/CloudService.js';
 import { validateRemoteConfig } from '../js/config/remoteConfig.js';
 import config from '../js/config/gameConfig.js';
 import { wxMock } from './helpers/wxMock.mjs';
+import Game from '../js/core/Game.js';
 
 function cloudMock() {
   const docs = new Map(); let queue = Promise.resolve(), writes = 0;
@@ -58,4 +59,16 @@ test('并发档案读取不覆盖结算，最高值单调增加，数据库故�
 test('远程配置不存在时返回本地默认信号，只返回白名单参数', async () => {
   const mock = cloudMock(), get = mock.load('getGameConfig'); assert.equal((await get()).config, null);
   mock.docs.set('game_config/current', { gravity: 2300, secret: 'ignored', unrelated: 4 }); assert.deepEqual(JSON.parse(JSON.stringify((await get()).config)), { gravity: 2300 });
+});
+
+test('一局云结果只发一次，已销毁游戏忽略迟到的云响应', async () => {
+  const api = wxMock(), game = new Game(api, { autoStart: false, raf: () => 0, caf: () => {} });
+  let calls = 0, resolveCloud;
+  game.cloud = { saveRunResult: () => { calls++; return new Promise(resolve => { resolveCloud = resolve; }); } };
+  game.tutorialCompleted = true; game.start(); game.score.award(700); game.runDuration = 20;
+  game.finishRun(); game.finishRun(); assert.equal(calls, 1); game.destroy();
+  const newer = new Game(api, { autoStart: false, raf: () => 0, caf: () => {} });
+  newer.local.save({ bestScore: 1000 }); resolveCloud({ bestScore: 9000 });
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(api.storage.get('PanToss.save.v1').bestScore, 1000); newer.destroy();
 });

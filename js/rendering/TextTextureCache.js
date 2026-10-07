@@ -40,7 +40,7 @@ export default class TextTextureCache {
     v.set([x, y, 0, 0, x + w, y, 1, 0, x + w, y + h, 1, 1, x, y, 0, 0, x + w, y + h, 1, 1, x, y + h, 0, 1]);
     const gl = this.gl; this.shader.use();
     gl.uniform2f(this.resolution, this.width, this.height); gl.uniform1f(this.alpha, alpha); gl.uniform1i(this.texture, 0);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, item.texture); gl.bindTexture(gl.TEXTURE_2D, item.texture); gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer); gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, item.texture); gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer); gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(this.position); gl.vertexAttribPointer(this.position, 2, gl.FLOAT, false, 16, 0);
     gl.enableVertexAttribArray(this.uv); gl.vertexAttribPointer(this.uv, 2, gl.FLOAT, false, 16, 8); gl.drawArrays(gl.TRIANGLES, 0, 6);
   }

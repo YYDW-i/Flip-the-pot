@@ -33,9 +33,14 @@ export function circleSegment(body, segment, pot, config) {
   const x = segment.ax + dx * t, y = segment.ay + dy * t;
   let nx = body.position.x - x, ny = body.position.y - y;
   const distance = Math.hypot(nx, ny);
-  if (distance > body.radius + config.CONTACT_SLOP) return -1;
-  if (distance > 0.001) { nx /= distance; ny /= distance; } else { nx = segment.nx; ny = segment.ny; }
-  const penetration = body.radius - distance;
+  const signed = nx * segment.nx + ny * segment.ny;
+  const previousSigned = (body.previousX - x) * segment.nx + (body.previousY - y) * segment.ny;
+  // 前一步在锅内、这一步跨过线段时，仍从内侧分离。锅外对象不会被吸进来。
+  const crossed = t > 0 && t < 1 && previousSigned >= 0 && signed < 0;
+  if (distance > body.radius + config.CONTACT_SLOP && !crossed) return -1;
+  if (crossed) { nx = segment.nx; ny = segment.ny; }
+  else if (distance > 0.001) { nx /= distance; ny /= distance; } else { nx = segment.nx; ny = segment.ny; }
+  const penetration = crossed ? body.radius - signed : body.radius - distance;
   if (penetration > 0) { body.position.x += nx * penetration; body.position.y += ny * penetration; }
   const panVX = pot.velocityX - pot.angularVelocity * (y - pot.positionY);
   const panVY = pot.velocityY + pot.angularVelocity * (x - pot.positionX);
