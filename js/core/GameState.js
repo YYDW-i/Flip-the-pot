@@ -1,0 +1,1 @@
+export default Object.freeze({ BOOT: 'BOOT', MENU: 'MENU', TUTORIAL: 'TUTORIAL', PLAYING: 'PLAYING', PAUSED: 'PAUSED', GAME_OVER: 'GAME_OVER' });

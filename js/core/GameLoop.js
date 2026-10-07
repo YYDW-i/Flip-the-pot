@@ -11,8 +11,8 @@ export default class GameLoop {
     dt = clamp(Number.isFinite(dt) ? dt : 0, 0, this.config.MAX_FRAME_DT);
     this.accumulator += dt;
     while (this.accumulator + 1e-9 >= this.config.FIXED_DT) {
-      this.update(this.config.FIXED_DT);
       this.accumulator -= this.config.FIXED_DT;
+      this.update(this.config.FIXED_DT);
     }
     this.render(dt);
   }

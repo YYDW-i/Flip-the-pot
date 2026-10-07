@@ -13,16 +13,29 @@ import ParticleSystem from '../systems/ParticleSystem.js';
 import HapticManager from '../services/HapticManager.js';
 import AudioManager from '../services/AudioManager.js';
 import Random from '../utils/Random.js';
+import State from './GameState.js';
+import Ingredient from '../entities/Ingredient.js';
+import SpawnSystem from '../systems/SpawnSystem.js';
+import HUD from '../ui/HUD.js';
+import MenuScreen from '../ui/MenuScreen.js';
+import TutorialOverlay from '../ui/TutorialOverlay.js';
+import GameOverScreen from '../ui/GameOverScreen.js';
+import { inside } from '../utils/MathUtils.js';
 
 export default class Game {
   constructor(api = wx, options = {}) {
     this.api = api; this.config = Object.assign({}, config);
+    this.state = State.BOOT; this.visualTime = 0; this.runCounter = 0; this.seed = options.seed === undefined ? Date.now() >>> 0 : options.seed;
+    this.bestScore = 0; this.tutorialCompleted = false; this.settingsOpen = false;
     this.canvas = api.createCanvas();
     this.camera = new Camera(this.canvas, this.config, api);
     this.renderer = new RendererGL(this.canvas, this.camera, this.config, api);
     this.pot = new Pot(this.config, this.camera.width, this.camera.height, this.camera.safeBottom);
     this.world = new PhysicsWorld(this.config, this.pot);
     this.score = new ScoreSystem(this.config);
+    this.hud = new HUD(); this.menu = new MenuScreen(); this.tutorial = new TutorialOverlay(this.config); this.gameOver = new GameOverScreen();
+    this.menuIngredients = this.config.TYPES.map((type, i) => new Ingredient(-i - 1, type.id, 2, 0, 0, this.config));
+    this.spawner = new SpawnSystem(this.config, this.world, this.camera);
     this.combo = new ComboSystem(this.config); this.slowTime = 0; this.lastSlowTime = -10;
     this.particles = new ParticleSystem(this.config, new Random(711));
     this.haptics = new HapticManager(this.config, api); this.audio = new AudioManager(api);
@@ -31,21 +44,83 @@ export default class Game {
     this.merge.onMerge = (body, points, air) => this.mergeFeedback(body, points, air);
     this.saveSystem.onSave = (body, points) => { this.particles.text('救回来了！ +' + points, body.position.x, body.position.y - 65, '#3e8561'); this.haptics.light(); };
     this.world.onPair = (a, b) => this.merge.collide(a, b);
-    this.world.onLand = (body, impact, index) => { this.saveSystem.land(body, index, this.world.time); this.audio.playLand(); if (impact > 400) this.particles.shake(2, 0.08); };
+    this.world.onLand = (body, impact, index) => {
+      this.saveSystem.land(body, index, this.world.time);
+      if (this.state === State.TUTORIAL) this.tutorial.land(body, index, this.world.time);
+      this.audio.playLand(); if (impact > 400) this.particles.shake(2, 0.08);
+    };
     this.world.onCollision = (a, b) => this.particles.burst((a.position.x + b.position.x) / 2, (a.position.y + b.position.y) / 2, [1, 0.85, 0.57, 1], 3, 90);
-    const initial = this.config.INITIAL_INGREDIENTS;
-    initial.forEach((type, i) => this.world.add(type, 1, this.pot.positionX + (i - (initial.length - 1) / 2) * this.config.INITIAL_SPACING, this.pot.positionY - 8));
     this.input = new InputManager(this.camera, this.config, {
-      dragStart: p => { this.pot.setTarget(p.x); return p.y > this.camera.height * 0.45; },
-      dragMove: (p, data) => { this.pot.setTarget(p.x, data.velocityX); if (data.toss) this.toss(data.toss); },
-      tap: () => {}
+      dragStart: p => this.dragStart(p), dragMove: (p, data) => this.dragMove(p, data), tap: p => this.tap(p)
     }, api);
-    this.loop = new GameLoop(this.config, dt => this.update(dt), () => this.renderer.render(this), options.raf, options.caf);
+    this.loop = new GameLoop(this.config, dt => this.update(dt), dt => { this.visualTime += dt; this.renderer.render(this); }, options.raf, options.caf);
+    this.onHide = () => { this.pause(); this.input.cancel(); this.audio.stop(); this.loop.stop(); };
+    this.onShow = () => { this.input.cancel(); this.loop.start(); };
+    this.onResize = () => this.resize();
+    if (api.onHide) api.onHide(this.onHide);
+    if (api.onShow) api.onShow(this.onShow);
+    if (api.onWindowResize) api.onWindowResize(this.onResize);
+    this.resetRun(); this.setState(State.MENU);
     if (options.autoStart !== false) this.loop.start();
   }
+  setState(state) { this.state = state; if (this.input) this.input.cancel(); }
+  active() { return (this.state === State.PLAYING || this.state === State.TUTORIAL) && !this.endingTime; }
+  resetRun() {
+    this.world.reset(); this.score.reset(); this.combo.reset(); this.particles.reset();
+    this.pot = new Pot(this.config, this.camera.width, this.camera.height, this.camera.safeBottom);
+    this.world.pot = this.pot; this.saveSystem.pot = this.pot;
+    this.lostCount = 0; this.runDuration = 0; this.endingTime = 0; this.result = null;
+    this.slowTime = 0; this.lastSlowTime = -10; this.settingsOpen = false;
+    this.spawner.reset((this.seed + this.runCounter++) >>> 0); this.tutorial.reset();
+    this.seedIngredients();
+    if (this.loop) this.loop.resetClock();
+  }
+  seedIngredients() {
+    const initial = this.config.INITIAL_INGREDIENTS;
+    initial.forEach((type, i) => this.world.add(type, 1, this.pot.positionX + (i - (initial.length - 1) / 2) * this.config.INITIAL_SPACING, this.pot.positionY - 8));
+  }
+  start(forceTutorial = false) { this.resetRun(); this.setState(forceTutorial || !this.tutorialCompleted ? State.TUTORIAL : State.PLAYING); }
+  completeTutorial() { this.tutorialCompleted = true; this.start(); }
+  pause() { if (this.state === State.PLAYING || this.state === State.TUTORIAL) { this.pauseReturn = this.state; this.setState(State.PAUSED); } }
+  resume() { if (this.state === State.PAUSED) { this.loop.resetClock(); this.setState(this.pauseReturn || State.PLAYING); } }
+  dragStart(point) {
+    if (!this.active() || point.y < this.camera.height * 0.4) return false;
+    this.dragOffset = this.pot.targetX - point.x;
+    return true;
+  }
+  dragMove(point, data) {
+    if (!this.active()) return;
+    this.pot.setTarget(point.x + this.dragOffset, data.velocityX);
+    if (data.toss) this.toss(data.toss);
+  }
+  tap(point) {
+    if (this.state === State.MENU) {
+      if (this.settingsOpen) {
+        const s = this.menu.settingsLayout(this.camera);
+        if (inside(point, s.sound)) this.audio.enabled = !this.audio.enabled;
+        else if (inside(point, s.haptic)) { this.haptics.enabled = !this.haptics.enabled; this.haptics.light(); }
+        else if (inside(point, s.close)) this.settingsOpen = false;
+        return;
+      }
+      const l = this.menu.layout(this.camera);
+      if (inside(point, l.start)) this.start();
+      else if (inside(point, l.help)) this.start(true);
+      else if (inside(point, l.settings)) this.settingsOpen = true;
+    } else if (this.state === State.PAUSED) {
+      const l = this.gameOver.pauseLayout(this.camera);
+      if (inside(point, l.resume)) this.resume(); else if (inside(point, l.restart)) this.start();
+    } else if (this.state === State.GAME_OVER) {
+      const l = this.gameOver.layout(this.camera);
+      if (inside(point, l.restart)) this.start(); else if (inside(point, l.menu)) this.setState(State.MENU);
+    } else if (this.active()) {
+      if (inside(point, this.hud.pauseRect(this.camera))) this.pause();
+      else if (this.state === State.TUTORIAL && inside(point, this.tutorial.skipRect(this.camera))) this.completeTutorial();
+    }
+  }
   toss(gesture) {
+    if (!this.active()) return 0;
     const count = this.pot.toss(this.world.bodies, gesture, this.world.time);
-    if (count) { this.audio.playToss(); this.haptics.light(); }
+    if (count) { this.audio.playToss(); this.haptics.light(); if (this.state === State.TUTORIAL) this.tutorial.toss(this.pot); }
     return count;
   }
   mergeFeedback(body, points, air) {
@@ -59,10 +134,60 @@ export default class Game {
     if (this.combo.count >= 4 && this.world.time - this.lastSlowTime > this.config.SLOWMO_COOLDOWN) { this.slowTime = this.config.SLOWMO_DURATION; this.lastSlowTime = this.world.time; }
   }
   update(dt) {
+    if (this.state !== State.PLAYING && this.state !== State.TUTORIAL) return;
+    if (this.endingTime > 0) {
+      this.endingTime = Math.max(0, this.endingTime - dt);
+      this.world.step(dt * Math.max(0.05, this.endingTime / this.config.GAME_OVER_SLOW_DURATION) * 0.4);
+      this.particles.update(dt);
+      if (!this.endingTime) this.finishRun();
+      return;
+    }
+    this.runDuration += dt;
     this.slowTime = Math.max(0, this.slowTime - dt);
     this.saveSystem.update(this.world.bodies, this.world.time);
     this.world.step(dt * (this.slowTime > 0 ? this.config.SLOWMO_SCALE : 1), dt);
     this.combo.update(this.world.time, dt); this.particles.update(dt);
+    if (this.state === State.PLAYING) this.spawner.update(dt);
+    else {
+      this.tutorial.move(this.pot);
+      if (this.tutorial.step === 3 && this.world.time - this.tutorial.completeTime > 1.5) { this.completeTutorial(); return; }
+    }
+    this.checkLost();
   }
-  destroy() { this.loop.stop(); this.input.destroy(); this.renderer.destroy(); this.audio.destroy(); }
+  checkLost() {
+    for (const body of this.world.bodies) {
+      if (!body.alive) continue;
+      const p = body.position, c = this.config;
+      const lost = p.y - body.radius > this.pot.baseY + c.LOST_DEPTH || p.x + body.radius < -c.LOST_SIDE_MARGIN || p.x - body.radius > this.camera.width + c.LOST_SIDE_MARGIN;
+      if (!lost) continue;
+      body.alive = false;
+      if (this.state === State.TUTORIAL) continue;
+      this.lostCount++; this.audio.playLose(); this.haptics.light(); this.particles.shake(4, 0.16);
+      this.particles.text('掉了一份！', Math.max(100, Math.min(this.camera.width - 100, p.x)), this.pot.baseY + 90, '#b54b36', 30);
+      if (this.lostCount >= c.MISS_LIMIT) { this.endingTime = c.GAME_OVER_SLOW_DURATION; this.input.cancel(); break; }
+    }
+    this.world.compact();
+    if (this.state === State.TUTORIAL && this.tutorial.step < 3 && this.world.bodies.length < 3) {
+      const time = this.world.time; this.world.reset(); this.world.time = time; this.seedIngredients();
+    }
+  }
+  finishRun() {
+    if (this.result) return;
+    this.result = { score: this.score.score, maxCombo: this.combo.maxCombo, duration: Math.max(0.01, this.runDuration), recipesCompleted: this.score.recipesCompleted };
+    this.bestScore = Math.max(this.bestScore, this.result.score);
+    this.audio.playGameOver(); this.setState(State.GAME_OVER);
+  }
+  resize() {
+    this.pause(); this.input.cancel(); const oldY = this.pot.baseY;
+    this.camera.resize(); this.pot.resize(this.camera.height, this.camera.safeBottom); this.pot.updateSegments();
+    const dy = this.pot.baseY - oldY;
+    for (const body of this.world.bodies) { body.position.y += dy; body.previousY += dy; }
+    this.loop.resetClock();
+  }
+  destroy() {
+    this.loop.stop(); this.input.destroy(); this.renderer.destroy(); this.audio.destroy();
+    if (this.api.offHide) this.api.offHide(this.onHide);
+    if (this.api.offShow) this.api.offShow(this.onShow);
+    if (this.api.offWindowResize) this.api.offWindowResize(this.onResize);
+  }
 }

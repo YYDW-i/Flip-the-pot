@@ -2,6 +2,7 @@ import PrimitiveBatch from './PrimitiveBatch.js';
 import TextTextureCache from './TextTextureCache.js';
 import ParticleRenderer from './ParticleRenderer.js';
 import { clamp } from '../utils/MathUtils.js';
+import State from '../core/GameState.js';
 
 const C = {
   cream: [1, 0.96, 0.89, 1], warm: [0.96, 0.88, 0.74, 1], tile: [1, 0.99, 0.94, 0.45],
@@ -34,16 +35,26 @@ export default class RendererGL {
     b.roundedRect(w / 2 - 130, pot.baseY + 112, 260, 46, 18, [0.5, 0.44, 0.35, 0.35]);
     b.ellipse(w / 2, pot.baseY + 115, 95, 16, [0.32, 0.31, 0.29, 0.3]);
   }
-  drawPot(pot) {
+  drawPot(pot, centerX = pot.positionX, centerY = pot.positionY, rotation = pot.rotation) {
     const b = this.batch, c = this.config, half = c.POT_WIDTH / 2, bottom = half * c.POT_BOTTOM_RATIO;
-    b.ellipse(pot.positionX, pot.baseY + 83, half * 0.9, 18, C.shadow);
-    b.transform(pot.positionX, pot.positionY, pot.rotation);
+    b.ellipse(centerX, centerY + 83, half * 0.9, 18, C.shadow);
+    b.transform(centerX, centerY, rotation);
     b.line(half - 5, -39, half + 95, -53, 28, C.pot);
     b.line(half + 27, -43, half + 83, -51, 7, C.inner);
     b.polygon([[-half - 6, -70], [-bottom - 8, 42], [bottom + 8, 42], [half + 6, -70]], C.pot);
     b.polygon([[-half, -70], [-bottom, 30], [bottom, 30], [half, -70]], C.inner);
     b.line(-half, -70, -bottom, 30, 8, C.lip); b.line(bottom, 30, half, -70, 8, C.lip);
     b.line(-bottom, 34, bottom, 34, 7, C.pot); b.transform();
+  }
+  drawMenuHero(game, y) {
+    this.drawPot(game.pot, 375, y, -0.06);
+    const poses = [[292, y - 160], [402, y - 245], [492, y - 126]];
+    for (let i = 0; i < 3; i++) {
+      const body = game.menuIngredients[i]; body.position.x = poses[i][0]; body.position.y = poses[i][1] + Math.sin(game.visualTime * 2 + i) * 9;
+      body.rotation = Math.sin(game.visualTime * 1.4 + i) * 0.13; this.drawIngredient(body, 1.6);
+    }
+    this.batch.line(320, y - 73, 296, y - 112, 3, [0.7, 0.65, 0.51, 0.3]);
+    this.batch.line(474, y - 70, 491, y - 91, 3, [0.7, 0.65, 0.51, 0.3]);
   }
   drawIngredient(body, scale = 1) {
     const b = this.batch, r = body.radius, p = body.position, s = scale * (1 + body.pop);
@@ -71,6 +82,7 @@ export default class RendererGL {
     gl.viewport(0, 0, this.canvas.width, this.canvas.height); gl.clearColor(1, 0.95, 0.86, 1); gl.clear(gl.COLOR_BUFFER_BIT);
     this.batch.begin(camera.width, camera.height); this.text.begin(camera.width, camera.height);
     this.background(game.pot);
+    if (game.state === State.MENU) { game.menu.render(this, game); this.batch.flush(); return; }
     const shake = game.particles.shakePower * Math.min(1, game.particles.shakeTime * 8);
     this.batch.root(Math.sin(game.world.time * 90) * shake, Math.cos(game.world.time * 110) * shake * 0.5);
     this.drawPot(game.pot);
@@ -80,14 +92,17 @@ export default class RendererGL {
       this.drawIngredient(body);
     }
     this.particleRenderer.render(this.batch, game.particles); this.batch.root(0, 0);
-    this.label('颠个锅', 40, camera.hudTop + 24, 42, '#514236', 'left', true);
-    this.label('分数', 44, camera.hudTop + 80, 23); this.number(game.score.score, 115, camera.hudTop + 80);
-    if (game.combo.count > 1) {
-      this.label('连击', 620, camera.hudTop + 28, 22, '#cc5835', 'center');
-      this.number(game.combo.count, 620, camera.hudTop + 77, 42, '#cc5835', 'center');
+    if (game.state === State.PLAYING && game.spawner.countdown < game.config.SPAWN_PREVIEW_TIME) {
+      const x = game.spawner.nextX, y = camera.hudTop + 185;
+      this.batch.circle(x, y + 14, 26, [1, 0.55, 0.25, 0.18]);
+      this.label('↓', x, y + 14, 32, '#e67741', 'center', true);
     }
+    game.hud.render(this, game);
     for (const text of game.particles.texts) this.label(text.text, text.x, text.y, text.size, text.color, 'center', true, Math.min(1, text.life * 3), 1 + Math.max(0, text.life - 0.75) * 0.6);
     this.label('左右拖动 · 向上甩动 · 移锅接住', camera.width / 2, camera.height - camera.safeBottom - 68, 25, '#fff7e8', 'center');
+    if (game.state === State.TUTORIAL) game.tutorial.render(this);
+    if (game.state === State.PAUSED) game.gameOver.renderPause(this);
+    if (game.state === State.GAME_OVER) game.gameOver.render(this, game);
     this.batch.flush();
   }
   destroy() { this.batch.destroy(); this.text.destroy(); }

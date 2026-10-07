@@ -28,7 +28,10 @@ export default class InputManager {
     if (this.activeId === null) return;
     const touch = (event.changedTouches || []).find(t => (t.identifier === undefined ? 0 : t.identifier) === this.activeId);
     if (!touch) return;
-    if (!this.moved) this.handlers.tap(this.point(touch));
+    const p = this.point(touch);
+    if (Math.hypot(p.x - this.startPoint.x, p.y - this.startPoint.y) > 14) this.moved = true;
+    if (this.dragging && this.moved) this.handlers.dragMove(p, this.gesture.move(p, this.time()));
+    if (!this.moved) this.handlers.tap(p);
     this.cancel();
   }
   cancel() { this.activeId = null; this.dragging = false; this.gesture.reset(); }
