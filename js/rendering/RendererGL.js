@@ -102,6 +102,7 @@ export default class RendererGL {
     this.background(game.pot);
     if (game.state === State.MENU) {
       if (game.leaderboardOpen) game.leaderboardScreen.render(this, game); else game.menu.render(this, game);
+      if (game.nicknamePrompt.open) game.nicknamePromptScreen.render(this, game);
       this.batch.flush(); return;
     }
     const shake = game.particles.shakePower * Math.min(1, game.particles.shakeTime * 8);

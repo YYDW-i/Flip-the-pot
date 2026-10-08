@@ -2,7 +2,8 @@ import { CLASSIC, MODE_IDS, modeId } from '../config/modes.js';
 const KEY = 'PanToss.save.v1';
 const DEFAULTS = {
   tutorialCompleted: false, bestScore: 0, bestCombo: 0, totalGames: 0,
-  totalScore: 0, recipesCompleted: 0, soundEnabled: true, hapticEnabled: true, selectedMode: CLASSIC
+  totalScore: 0, recipesCompleted: 0, soundEnabled: true, hapticEnabled: true, selectedMode: CLASSIC,
+  nicknamePromptHandled: false, pendingNickname: ''
 };
 const STATS = ['bestScore', 'bestCombo', 'totalGames', 'totalScore', 'recipesCompleted'];
 const integer = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
@@ -21,6 +22,10 @@ export default class LocalSaveService {
     for (const key of Object.keys(DEFAULTS)) {
       if (!(key in patch)) continue;
       if (key === 'selectedMode') { this.data.selectedMode = modeId(patch[key]); continue; }
+      if (key === 'pendingNickname') {
+        if (typeof patch[key] === 'string') this.data[key] = Array.from(patch[key].replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, 20).join('');
+        continue;
+      }
       if (typeof DEFAULTS[key] === 'boolean') { if (typeof patch[key] === 'boolean') this.data[key] = patch[key]; }
       else this.data[key] = integer(patch[key]);
     }

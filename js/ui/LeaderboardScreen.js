@@ -7,8 +7,7 @@ export default class LeaderboardScreen {
     return { panel: p, close: { x: 633, y: p.y + 15, w: 55, h: 50 },
       classic: { x: 95, y: p.y + 90, w: 250, h: 58 }, endless: { x: 405, y: p.y + 90, w: 250, h: 58 },
       previous: { x: 90, y: p.y + p.h - 278, w: 150, h: 52 }, next: { x: 510, y: p.y + p.h - 278, w: 150, h: 52 },
-      refresh: { x: 295, y: p.y + p.h - 278, w: 160, h: 52 },
-      authorize: { x: 160, y: p.y + p.h - 82, w: 430, h: 54 } };
+      refresh: { x: 295, y: p.y + p.h - 278, w: 160, h: 52 } };
   }
   render(r, game) {
     const data = game.board, l = this.layout(r.camera), p = l.panel; panel(r, p);
@@ -21,7 +20,7 @@ export default class LeaderboardScreen {
     if (data.phase === 'loading') r.label('正在读取排行榜…', 375, p.y + 315, 26, '#8c785f', 'center');
     else if (data.phase === 'offline') {
       r.label('云排行榜暂不可用', 375, p.y + 315, 28, '#b54b36', 'center');
-      r.label('请配置云环境、部署云函数后刷新', 375, p.y + 360, 22, '#8c785f', 'center');
+      r.label(data.errorMessage || '连接失败，请稍后刷新', 375, p.y + 360, 22, '#8c785f', 'center');
     } else if (!data.entries.length) r.label('还没有成绩，来颠第一锅吧', 375, p.y + 315, 26, '#8c785f', 'center');
     else data.entries.forEach((entry, i) => {
       const y = p.y + 254 + i * rowH;
@@ -37,8 +36,8 @@ export default class LeaderboardScreen {
     r.batch.roundedRect(70, y - 26, 610, 63, 16, [0.95, 0.89, 0.77, 0.7]);
     r.label(mine && mine.rank ? '我 · 第 ' + mine.rank + ' 名' : '我 · ' + (data.phase === 'offline' ? '本地最高' : '尚未上榜'), 95, y + 5, 24);
     r.number(mine ? mine.score : game.local.best(data.mode), 650, y + 5, 30, '#df6037', 'right');
-    r.label('授权后昵称将公开显示给其他玩家，可拒绝', 375, p.y + p.h - 132, 21, '#8c785f', 'center');
-    r.label(data.authMessage || (game.nickname ? '已授权：' + shortName(game.nickname) : '未授权时显示为匿名小厨'), 375, p.y + p.h - 104, 20, '#8c785f', 'center');
-    button(r, l.authorize, game.userInfo.phase === 'ready' ? '点击授权昵称' : game.userInfo.phase === 'privacy' ? '等待隐私确认' : '授权昵称用于排行', false);
+    r.label(game.nickname ? '我的昵称：' + shortName(game.nickname) : '我的昵称：匿名小厨', 375, p.y + p.h - 128, 22, '#8c785f', 'center');
+    r.label(game.runSyncState === 'failed' ? '本局未同步，请检查网络后再完成一局' : '正式结束一局并成功同步后上榜', 375, p.y + p.h - 90, 21, '#8c785f', 'center');
+    r.label('可在首页设置中修改排行昵称', 375, p.y + p.h - 54, 20, '#8c785f', 'center');
   }
 }

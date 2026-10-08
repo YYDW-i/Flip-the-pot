@@ -9,8 +9,9 @@ export default class MenuScreen {
       settings: { x: 475, y: y + 128, w: 140, h: 64 }, leaderboard: { x: 300, y: y + 128, w: 150, h: 64 } };
   }
   settingsLayout(camera) {
-    const p = centeredPanel(camera, 435);
-    return { panel: p, sound: { x: p.x + 55, y: p.y + 108, w: p.w - 110, h: 66 }, haptic: { x: p.x + 55, y: p.y + 193, w: p.w - 110, h: 66 }, close: { x: p.x + 100, y: p.y + 305, w: p.w - 200, h: 75 } };
+    const p = centeredPanel(camera, 545);
+    return { panel: p, sound: { x: p.x + 55, y: p.y + 108, w: p.w - 110, h: 66 }, haptic: { x: p.x + 55, y: p.y + 193, w: p.w - 110, h: 66 },
+      nickname: { x: p.x + 55, y: p.y + 278, w: p.w - 110, h: 66 }, close: { x: p.x + 100, y: p.y + 415, w: p.w - 200, h: 75 } };
   }
   render(r, game) {
     const h = r.camera.height, top = r.camera.safeTop, usable = h - top - r.camera.safeBottom, layout = this.layout(r.camera);
@@ -29,7 +30,8 @@ export default class MenuScreen {
     r.label('设置', 375, s.panel.y + 56, 37, '#514236', 'center', true);
     button(r, s.sound, '音效：' + (game.audio.enabled ? '开' : '关'), false);
     button(r, s.haptic, '震动：' + (game.haptics.enabled ? '开' : '关'), false);
-    r.label('打开音效即可试听', 375, s.panel.y + 282, 20, '#9c8d78', 'center');
+    button(r, s.nickname, game.nickname ? '更新排行昵称' : '设置排行昵称', false);
+    r.label('打开音效即可试听', 375, s.panel.y + 384, 20, '#9c8d78', 'center');
     button(r, s.close, '完成');
   }
 }

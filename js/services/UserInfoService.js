@@ -1,27 +1,28 @@
-// 授权必须由用户点击发起。只保留公开昵称，不使用头像、地区等资料。
+// 首次进入即准备隐私授权及原生确认按钮；昵称权限仍由用户点击确认。
 export default class UserInfoService {
   constructor(api = wx) { this.api = api; this.token = 0; this.phase = 'idle'; }
-  prepare(rect, camera, status, identity) {
+  prepare(rect, camera, status, identity, declined = () => {}) {
     this.clear(); const token = this.token;
-    if (!this.api.createUserInfoButton) { status('当前客户端不支持昵称授权，可匿名查看排行'); return; }
+    if (!this.api.createUserInfoButton) { status('当前客户端不支持昵称授权，可匿名游玩'); return; }
     this.phase = 'privacy'; status('请确认微信隐私授权');
-    const fail = () => { if (token !== this.token) return; this.clear(); status('授权未完成，可继续匿名游玩'); };
+    const fail = () => { if (token !== this.token) return; this.clear(); status('授权未完成，可继续匿名游玩'); declined(); };
     const ready = () => {
       if (token !== this.token || this.phase !== 'privacy') return;
       clearTimeout(this.timer); this.timer = null;
       try {
         const s = camera.scale;
-        this.button = this.api.createUserInfoButton({ type: 'text', text: '点击授权昵称', lang: 'zh_CN', withCredentials: false,
+        this.button = this.api.createUserInfoButton({ type: 'text', text: '同意并继续', lang: 'zh_CN', withCredentials: false,
           style: { left: rect.x * s, top: rect.y * s, width: rect.w * s, height: rect.h * s,
             lineHeight: rect.h * s, fontSize: 26 * s, borderRadius: 20 * s, backgroundColor: '#f46638', color: '#ffffff', textAlign: 'center' } });
         this.tap = result => {
           if (token !== this.token) return;
           const user = result && result.userInfo;
-          if (!user || typeof user.nickName !== 'string' || !user.nickName.trim()) { fail(); return; }
+          if (!user || typeof user.nickName !== 'string') { fail(); return; }
           const nickname = Array.from(user.nickName.replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, 20).join('');
+          if (!nickname) { fail(); return; }
           this.clear(); status('正在保存公开昵称…'); identity(nickname);
         };
-        this.button.onTap(this.tap); this.button.show(); this.phase = 'ready'; status('再点按钮，授权昵称用于公开排行');
+        this.button.onTap(this.tap); this.button.show(); this.phase = 'ready'; status('确认后使用微信昵称参与公开排行');
       } catch (e) { fail(); }
     };
     this.timer = setTimeout(fail, 30000);

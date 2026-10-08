@@ -11,10 +11,11 @@ body{height:100vh;overflow:hidden}aside{max-height:calc(100vh - 48px);overflow-y
 <button id="capture">保存画面</button><p id="capture-status"></p>
 <button id="classic">经典模式（测试）</button><button id="endless">无尽模式（测试）</button>
 <button id="drop-one">掉落一级（测试）</button><button id="drop-five">掉落五级（测试）</button><button id="mock-board">模拟云榜（测试）</button>
+<button id="mock-nickname">首次授权引导（测试）</button>
 <select id="food-level"><option value="1">一级食材</option><option value="2">二级食材</option><option value="3">三级食材</option><option value="4">四级食材</option><option value="5">五级食材</option></select>
 <button id="place-food">放入所选等级</button><button id="stack-food">放入二三级叠放</button><br>
 <select id="sound"><option value="toss">颠锅</option><option value="land">落锅</option><option value="merge">合成</option><option value="airMerge">空中合成</option><option value="lose">掉落</option><option value="recipe">料理出锅</option><option value="gameOver">结算</option></select><button id="play-sound">试听音效</button>
-<p>模拟云榜只显示测试数据，不连接真实云端或发起微信授权。</p>
+<p>模拟云榜和授权引导只使用测试数据，不连接真实云端或发起微信授权。</p>
 <pre id="status"></pre><pre id="errors"></pre></aside>
 <script type="module">
 import Game from '../js/core/Game.js';
@@ -75,6 +76,22 @@ document.querySelector('#mock-board').onclick=()=>{
     entries:Array.from({length:10},(_,i)=>({rank:page*10+i+1,nickname:i===3?'这是测试玩家的很长昵称':'测试小厨'+(page*10+i+1),score:(mode==='endless'?5000:2000)-(page*10+i)*80,isMe:i===3})),
     mine:{rank:4,score:mode==='endless'?4760:1760,nickname:'测试玩家'}});
   game.setState(State.MENU);game.loadLeaderboard();
+};
+document.querySelector('#mock-nickname').onclick=()=>{
+  game.setState(State.MENU);game.closeLeaderboard();
+  api.requirePrivacyAuthorize=opts=>opts.success();
+  api.createUserInfoButton=opts=>{
+    const node=document.createElement('button'),rect=canvas.getBoundingClientRect(),s=rect.width/width;
+    node.id='mock-info-button';node.textContent=opts.text;
+    Object.assign(node.style,{position:'absolute',left:(rect.left+opts.style.left*s)+'px',top:(rect.top+opts.style.top*s)+'px',
+      width:opts.style.width*s+'px',height:opts.style.height*s+'px',margin:'0',padding:'0',fontSize:opts.style.fontSize*s+'px',
+      borderRadius:opts.style.borderRadius*s+'px',background:opts.style.backgroundColor,color:opts.style.color,border:'0'});
+    let callback;
+    node.onclick=()=>callback&&callback({userInfo:{nickName:'测试小厨'}});
+    return {onTap(fn){callback=fn;},offTap(){callback=null;},show(){document.body.append(node);},destroy(){node.remove();}};
+  };
+  game.leaderboard.updateIdentity=async nickname=>({nickname});
+  game.promptNickname(true);
 };
 document.querySelector('#light').onclick=()=>game.toss({speed:420,velocityX:0});document.querySelector('#strong').onclick=()=>game.toss({speed:2000,velocityX:0});
 function pair(types,level){

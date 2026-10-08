@@ -29,6 +29,7 @@ import { CLASSIC, ENDLESS, modeId } from '../config/modes.js';
 import LeaderboardService from '../services/LeaderboardService.js';
 import UserInfoService from '../services/UserInfoService.js';
 import LeaderboardScreen from '../ui/LeaderboardScreen.js';
+import NicknamePrompt from '../ui/NicknamePrompt.js';
 
 export default class Game {
   constructor(api = wx, options = {}) {
@@ -37,6 +38,7 @@ export default class Game {
     this.local = new LocalSaveService(api);
     this.userInfo = new UserInfoService(api); this.nickname = ''; this.boardToken = 0; this.leaderboardOpen = false;
     this.leaderboardScreen = new LeaderboardScreen();
+    this.nicknamePromptScreen = new NicknamePrompt(); this.nicknamePrompt = { open: false, message: '' }; this.hidden = false;
     this.mode = this.local.data.selectedMode;
     this.bestScore = this.local.best(this.mode); this.tutorialCompleted = this.local.data.tutorialCompleted; this.settingsOpen = false;
     this.canvas = api.createCanvas();
@@ -75,8 +77,8 @@ export default class Game {
     this.loop.onFatal = error => {
       try { if (api.showModal) api.showModal({ title: '运行异常', content: '游戏已停止，请重新进入。详情见开发者工具控制台：' + error.message, showCancel: false }); } catch (e) {}
     };
-    this.onHide = () => { this.userInfo.clear(); this.pause(); this.input.cancel(); this.audio.stop(); this.loop.stop(); };
-    this.onShow = () => { this.input.cancel(); this.loop.start(); };
+    this.onHide = () => { this.hidden = true; this.userInfo.clear(); this.pause(); this.input.cancel(); this.audio.stop(); this.loop.stop(); };
+    this.onShow = () => { this.hidden = false; this.input.cancel(); this.resumeNicknamePrompt(); this.loop.start(); };
     this.onResize = () => this.resize();
     if (api.onHide) api.onHide(this.onHide);
     if (api.onShow) api.onShow(this.onShow);
@@ -84,50 +86,75 @@ export default class Game {
     this.resetRun(); this.setState(State.MENU);
     this.cloud = new CloudService(api);
     this.leaderboard = new LeaderboardService(this.cloud);
-    this.cloud.bootstrap().then(data => {
+    this.bootstrapPromise = this.cloud.bootstrap().then(data => {
       if (this.disposed) return;
       this.local.mergeProfile(data.profile); this.bestScore = this.local.best(this.mode);
-      if (data.profile && data.profile.nickname) this.nickname = data.profile.nickname;
+      if (data.profile && data.profile.nickname && !this.local.data.pendingNickname && !this.identitySaving) {
+        this.nickname = data.profile.nickname; this.dismissNicknamePrompt();
+      }
+      if (this.local.data.pendingNickname) this.syncNickname();
       // 远程参数只在下一局重置时应用，不能改变正在进行的物理局面。
       this.pendingConfig = validateRemoteConfig(data.config, this.config);
     }).catch(() => { console.warn('PanToss 云启动检查失败，继续本地游戏'); });
+    this.promptNickname();
     if (options.autoStart !== false) this.loop.start();
   }
-  setState(state) { if (state !== State.MENU) this.closeLeaderboard(); this.state = state; if (this.input) this.input.cancel(); }
-  closeLeaderboard() { this.leaderboardOpen = false; this.boardToken++; this.userInfo.clear(); }
+  setState(state) {
+    if (state !== State.MENU) { this.closeLeaderboard(); this.dismissNicknamePrompt(false); }
+    this.state = state; if (this.input) this.input.cancel();
+  }
+  closeLeaderboard() { this.leaderboardOpen = false; this.boardToken++; }
   async loadLeaderboard(mode = this.mode, page = 0) {
-    this.userInfo.clear(); this.leaderboardOpen = true; const token = ++this.boardToken;
-    this.board = { mode: modeId(mode), page, entries: [], hasNext: false, mine: null, phase: 'loading', authMessage: '' };
+    this.leaderboardOpen = true; const token = ++this.boardToken;
+    this.board = { mode: modeId(mode), page, entries: [], hasNext: false, mine: null, phase: 'loading', errorMessage: '' };
     try {
+      // 刚结算便打开榜单时，先等成绩写入，避免读到上一刻的空榜。
+      if (this.runSyncPromise) await this.runSyncPromise;
+      if (this.disposed || token !== this.boardToken) return;
       const result = await this.leaderboard.getEntries(this.board.mode, page);
       if (this.disposed || token !== this.boardToken) return;
       if (result && Array.isArray(result.entries)) Object.assign(this.board, result, { phase: 'ready' });
-      else this.board.phase = 'offline';
-    } catch (e) { if (!this.disposed && token === this.boardToken) this.board.phase = 'offline'; }
+      else Object.assign(this.board, { phase: 'offline', errorMessage: this.leaderboard.errorMessage() });
+    } catch (e) { if (!this.disposed && token === this.boardToken) Object.assign(this.board, { phase: 'offline', errorMessage: this.leaderboard.errorMessage() }); }
   }
-  authorizeNickname() {
-    if (this.userInfo.phase !== 'idle') return;
-    if (!this.cloud.available) { this.board.authMessage = '请先连接云排行榜，再授权昵称'; return; }
-    const token = this.boardToken;
-    this.userInfo.prepare(this.leaderboardScreen.layout(this.camera).authorize, this.camera,
-      message => { if (this.leaderboardOpen && token === this.boardToken) this.board.authMessage = message; },
-      async nickname => {
-        try {
-          const profile = await this.leaderboard.updateIdentity(nickname);
-          if (this.disposed) return;
-          if (profile) { this.nickname = profile.nickname; this.local.mergeProfile(profile); this.bestScore = this.local.best(this.mode); }
-          if (!this.leaderboardOpen || token !== this.boardToken) return;
-          if (profile) this.loadLeaderboard(this.board.mode, this.board.page);
-          else this.board.authMessage = '昵称保存失败，请稍后重试';
-        } catch (e) { if (this.leaderboardOpen && token === this.boardToken) this.board.authMessage = '昵称保存失败，请稍后重试'; }
-      });
+  promptNickname(force = false) {
+    if (this.disposed || this.hidden || this.state !== State.MENU) return;
+    if (!force && (this.local.data.nicknamePromptHandled || this.nickname || !this.api.createUserInfoButton)) return;
+    this.nicknamePrompt.open = true; this.settingsOpen = false; this.resumeNicknamePrompt();
+  }
+  resumeNicknamePrompt() {
+    if (!this.nicknamePrompt.open || this.hidden || this.identitySaving || this.userInfo.phase !== 'idle') return;
+    if (this.local.data.pendingNickname) { this.nicknamePrompt.message = '已确认昵称，联网后可重试保存'; return; }
+    this.userInfo.prepare(this.nicknamePromptScreen.layout(this.camera).confirm, this.camera,
+      message => { this.nicknamePrompt.message = message; },
+      nickname => {
+        this.local.save({ nicknamePromptHandled: true, pendingNickname: nickname });
+        this.syncNickname();
+      }, () => this.dismissNicknamePrompt());
+  }
+  dismissNicknamePrompt(handled = true) {
+    if (handled) this.local.save({ nicknamePromptHandled: true });
+    this.nicknamePrompt.open = false; this.userInfo.clear();
+  }
+  async syncNickname() {
+    if (this.identitySaving || !this.local.data.pendingNickname || this.disposed) return;
+    this.identitySaving = true; this.nicknamePrompt.message = '正在保存公开昵称…';
+    try {
+      const profile = await this.leaderboard.updateIdentity(this.local.data.pendingNickname);
+      if (this.disposed) return;
+      if (profile && profile.nickname) {
+        this.nickname = profile.nickname; this.local.mergeProfile(profile); this.local.save({ pendingNickname: '' });
+        this.bestScore = this.local.best(this.mode); this.dismissNicknamePrompt();
+        if (this.leaderboardOpen) await this.loadLeaderboard(this.board.mode, this.board.page);
+      } else this.nicknamePrompt.message = '昵称保存失败，请重试或先匿名游玩';
+    } catch (e) { if (!this.disposed) this.nicknamePrompt.message = '昵称保存失败，请重试或先匿名游玩'; }
+    finally { this.identitySaving = false; }
   }
   tapLeaderboard(point) {
     const l = this.leaderboardScreen.layout(this.camera), b = this.board;
     if (inside(point, l.close)) this.closeLeaderboard();
     else if (inside(point, l.classic)) this.loadLeaderboard(CLASSIC);
     else if (inside(point, l.endless)) this.loadLeaderboard(ENDLESS);
-    else if (inside(point, l.authorize)) this.authorizeNickname();
     else if (b.phase !== 'loading') {
       if (inside(point, l.previous) && b.page > 0) this.loadLeaderboard(b.mode, b.page - 1);
       else if (inside(point, l.next) && b.hasNext) this.loadLeaderboard(b.mode, b.page + 1);
@@ -174,12 +201,19 @@ export default class Game {
     if (data.toss) this.toss(data.toss);
   }
   tap(point) {
+    if (this.nicknamePrompt.open) {
+      const l = this.nicknamePromptScreen.layout(this.camera);
+      if (inside(point, l.skip)) this.dismissNicknamePrompt();
+      else if (inside(point, l.confirm) && this.local.data.pendingNickname) this.syncNickname();
+      return;
+    }
     if (this.state === State.MENU) {
       if (this.leaderboardOpen) { this.tapLeaderboard(point); return; }
       if (this.settingsOpen) {
         const s = this.menu.settingsLayout(this.camera);
         if (inside(point, s.sound)) this.audio.setEnabled(!this.audio.enabled);
         else if (inside(point, s.haptic)) { this.haptics.enabled = !this.haptics.enabled; this.haptics.light(); }
+        else if (inside(point, s.nickname)) this.promptNickname(true);
         else if (inside(point, s.close)) this.settingsOpen = false;
         this.local.save({ soundEnabled: this.audio.enabled, hapticEnabled: this.haptics.enabled });
         return;
@@ -274,7 +308,12 @@ export default class Game {
     this.local.recordRun(this.result); this.bestScore = this.local.best(this.mode);
     this.audio.playGameOver(); this.setState(State.GAME_OVER);
     // 一局只提交一次；网络失败保留本地结果，不阻塞再开一局。
-    this.cloud.saveRunResult(this.result).then(profile => { if (!this.disposed) { this.local.mergeProfile(profile); this.bestScore = this.local.best(this.mode); } }).catch(() => {});
+    this.runSyncState = 'saving';
+    this.runSyncPromise = this.cloud.saveRunResult(this.result).then(profile => {
+      if (!this.disposed) {
+        this.local.mergeProfile(profile); this.bestScore = this.local.best(this.mode); this.runSyncState = profile ? 'ready' : 'failed';
+      }
+    }).catch(() => { if (!this.disposed) this.runSyncState = 'failed'; });
   }
   resize() {
     this.userInfo.clear();
@@ -283,6 +322,7 @@ export default class Game {
     const dy = this.pot.baseY - oldY;
     for (const body of this.world.bodies) { body.position.y += dy; body.previousY += dy; }
     this.loop.resetClock();
+    this.resumeNicknamePrompt();
   }
   destroy() {
     this.disposed = true;
