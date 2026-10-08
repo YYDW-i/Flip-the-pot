@@ -51,7 +51,8 @@ export default class RendererGL {
     const usable = this.camera.height - this.camera.safeTop - this.camera.safeBottom;
     const poses = [[292, y - usable * 0.11], [402, y - usable * 0.17], [492, y - usable * 0.08]];
     for (let i = 0; i < 3; i++) {
-      const body = game.menuIngredients[i]; body.position.x = poses[i][0]; body.position.y = poses[i][1] + Math.sin(game.visualTime * 2 + i) * 9;
+      const body = game.menuIngredients[i]; body.position.x = poses[i][0];
+      body.position.y = Math.max(poses[i][1], this.camera.safeTop + usable * 0.30) + Math.sin(game.visualTime * 2 + i) * 9;
       body.rotation = Math.sin(game.visualTime * 1.4 + i) * 0.13; this.drawIngredient(body, clamp(usable / 1250 * 1.6, 1.1, 1.6));
     }
     this.batch.line(320, y - 73, 296, y - 112, 3, [0.7, 0.65, 0.51, 0.3]);

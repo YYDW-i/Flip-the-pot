@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>PanToss 本地 WebGL 验证</title>
 <style>
+body{height:100vh;overflow:hidden}aside{max-height:calc(100vh - 48px);overflow-y:auto}
 *{box-sizing:border-box}body{margin:0;background:#ece9e2;font-family:system-ui,sans-serif;color:#514236;display:flex;gap:28px;padding:24px;align-items:flex-start}canvas#game{width:375px;height:667px;border-radius:22px;box-shadow:0 10px 40px #3e33252a;touch-action:none;flex-shrink:0}aside{width:320px}h1{font-size:22px}p{line-height:1.6;font-size:14px}button,select{border:1px solid #cdbda7;border-radius:9px;background:#fff8eb;padding:10px;margin:0 4px 8px 0;color:#514236;cursor:pointer}pre{font-size:12px;white-space:pre-wrap;background:#fff8eb;border-radius:12px;padding:12px}#errors{color:#a73d2a}
 </style></head><body><canvas id="game"></canvas><aside>
 <h1>PanToss 本地 WebGL 验证</h1><p>与小游戏共用完整核心代码。本页只模拟 wx 接口，主画布使用真实 WebGL。鼠标按住画布下半部分即可拖锅、上甩。</p>
@@ -8,6 +9,9 @@
 <button id="start">开始 / 重开</button><button id="skip">结束练习</button><button id="pause">暂停 / 继续</button><button id="menu">回首页</button><br>
 <button id="light">轻颠</button><button id="strong">重颠</button><button id="air">演示空中合成</button><button id="recipe">演示订单</button><button id="lose">丢失三份</button>
 <button id="capture">保存画面</button><p id="capture-status"></p>
+<button id="classic">经典模式（测试）</button><button id="endless">无尽模式（测试）</button>
+<button id="drop-one">掉落一级（测试）</button><button id="drop-five">掉落五级（测试）</button><button id="mock-board">模拟云榜（测试）</button>
+<p>模拟云榜只显示测试数据，不连接真实云端或发起微信授权。</p>
 <pre id="status"></pre><pre id="errors"></pre></aside>
 <script type="module">
 import Game from '../js/core/Game.js';
@@ -38,6 +42,17 @@ document.querySelector('#device').onchange=e=>{[width,height]=e.target.value.spl
 document.querySelector('#start').onclick=()=>game.start();document.querySelector('#skip').onclick=()=>game.completeTutorial();
 document.querySelector('#pause').onclick=()=>game.state===State.PAUSED?game.resume():game.pause();
 document.querySelector('#menu').onclick=()=>game.setState(State.MENU);
+for(const mode of ['classic','endless'])document.querySelector('#'+mode).onclick=()=>{game.setState(State.MENU);game.selectMode(mode);};
+for(const [name,level] of [['drop-one',1],['drop-five',5]])document.querySelector('#'+name).onclick=()=>{
+  if(!game.active())return;game.world.add('egg',level,375,game.camera.height+300);
+};
+document.querySelector('#mock-board').onclick=()=>{
+  game.cloud.available=true;
+  game.leaderboard.getEntries=async(mode,page)=>({mode,page,hasNext:page===0,
+    entries:Array.from({length:10},(_,i)=>({rank:page*10+i+1,nickname:i===3?'这是测试玩家的很长昵称':'测试小厨'+(page*10+i+1),score:(mode==='endless'?5000:2000)-(page*10+i)*80,isMe:i===3})),
+    mine:{rank:4,score:mode==='endless'?4760:1760,nickname:'测试玩家'}});
+  game.setState(State.MENU);game.loadLeaderboard();
+};
 document.querySelector('#light').onclick=()=>game.toss({speed:420,velocityX:0});document.querySelector('#strong').onclick=()=>game.toss({speed:2000,velocityX:0});
 function pair(types,level){
   if(!game.active())game.completeTutorial();const x=game.camera.width/2,y=game.camera.height*.47;
@@ -47,5 +62,5 @@ document.querySelector('#air').onclick=()=>pair(['tomato','tomato'],1);
 document.querySelector('#recipe').onclick=()=>{const req=game.recipe.current.ingredients;pair(req.map(r=>r.type),Math.max(...req.map(r=>r.level)))};
 document.querySelector('#lose').onclick=()=>{if(!game.active())game.completeTutorial();for(let i=0;i<3;i++){const b=game.world.add('egg',1,375,game.camera.height+300);if(b)b.velocity.y=100;}};
 document.querySelector('#capture').onclick=()=>requestAnimationFrame(()=>{game.renderer.render(game);canvas.toBlob(async blob=>{try{const response=await fetch('/qa/capture',{method:'POST',body:blob});document.querySelector('#capture-status').textContent=await response.text();}catch(error){document.querySelector('#capture-status').textContent=String(error);}},'image/png');});
-setInterval(()=>{document.querySelector('#status').textContent=JSON.stringify({state:game.state,score:game.score.score,combo:game.combo.count,lost:game.lostCount,ingredients:game.world.bodies.length,particles:game.particles.count,textures:game.renderer.text.cache.size,glError:game.renderer.gl.getError(),tutorialStep:game.tutorial.step,potX:Math.round(game.pot.positionX),errorCount:errors.length},null,2)},200);
+setInterval(()=>{document.querySelector('#status').textContent=JSON.stringify({state:game.state,mode:game.mode,score:game.score.score,peak:game.score.peak,combo:game.combo.count,lost:game.lostCount,board:game.leaderboardOpen?{mode:game.board.mode,page:game.board.page,phase:game.board.phase}:null,ingredients:game.world.bodies.length,particles:game.particles.count,textures:game.renderer.text.cache.size,glError:game.renderer.gl.getError(),tutorialStep:game.tutorial.step,potX:Math.round(game.pot.positionX),errorCount:errors.length},null,2)},200);
 </script></body></html>
