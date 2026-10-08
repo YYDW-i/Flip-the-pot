@@ -1,5 +1,7 @@
 # 颠个锅 · PanToss 开发说明
 
+2026-10-08 更新：新增经典/无尽模式、模式独立存档、全服最高分榜和微信昵称授权。部署步骤、索引及授权说明见 [模式与排行榜部署](docs/模式与排行榜部署.md)。
+
 ## 1. 打开与运行
 
 1. 用微信开发者工具打开当前目录 `E:\wechatcode\minigame-1`，项目类型为「小游戏」。
@@ -18,12 +20,14 @@
 - 同类型、同等级、未到 Lv5 的食材真实碰撞才合成。新食材保留质量中心与近似动量，用冷却防止重复合成。
 - 双方离锅一段时间后的空中合成得分 ×2；1.2 秒窗口内连续合成增加连击，倍率从 ×1、×1.5、×2 逐步增加，上限 ×6。
 - 连续空中合成显示「完美颠锅」，强化光圈、粒子与浮字；高连击可触发 0.1 秒短暂慢动作，锅按真实时间继续响应。
-- 危险食材被玩家移锅接住后显示「救回来了！」并加 20 分。刚过锅沿不会立即扣机会，真正离开救援范围才计失误；三次后减速结算。
+- 危险食材被玩家移锅接住后显示「救回来了！」并加 20 分。刚过锅沿不会立即判丢失；经典模式三次失误后结算。无尽模式从 100 分开始，掉落 Lv1～Lv5 分别扣 10/20/40/80/160，分数低于 0 才结束，0 分仍继续。
 - 开局番茄 ×2、鸡蛋 ×2、蘑菇 ×1，三种食材各五级。高级食材更大、更重、更难颠。
 - 新食材约每 4 秒落下，逐渐加快，最低 2.35 秒；显示下一食材与落点预告，上限 30 个。
 - 点击暂停或进入后台会停止模拟，回到前台需点击「继续游戏」才恢复。
 - 「再颠一锅」清空并重置本局，不重载小游戏、不重复注册触摸监听。
-- 首页「玩法」可再次进行不扣机会、无新增压力的三步练习；「设置」保存音效和震动开关。
+- 首页可选择经典/无尽模式；「玩法」可再次进行免罚练习，「设置」保存音效与震动开关，「排行榜」查看分模式全服榜、本人名次及授权昵称。
+
+无尽模式没有机会计数。结算展示本局最高分和结束时分数，排行及最高分存档记录本局峰值；经典模式分数只增加，因此峰值等于本局得分。两种模式只在正式结算后提交成绩，排行榜以云端成功同步的成绩为准。
 
 得分统一由 ScoreSystem 管理。普通合成按新等级基础分计分：Lv2 / Lv3 / Lv4 / Lv5 为 20 / 40 / 80 / 160，再乘空中与连击倍率。
 
@@ -51,6 +55,7 @@ minigame-1/
 │   ├── config/
 │   │   ├── gameConfig.js                集中的手感、物理、等级、反馈参数
 │   │   ├── recipes.js                   三份订单
+│   │   ├── modes.js                     模式 ID 与中文名称
 │   │   ├── env.js                       云环境 ID、请求超时
 │   │   └── remoteConfig.js              远程白名单与范围验证
 │   ├── core/
@@ -85,20 +90,25 @@ minigame-1/
 │   │   ├── MenuScreen.js / HUD.js        中文首页、设置、局内信息
 │   │   ├── TutorialOverlay.js           三步实际操作练习
 │   │   ├── GameOverScreen.js            暂停、结算、重开
+│   │   ├── LeaderboardScreen.js         模式榜、分页、本人排名与授权入口
 │   │   └── UIHelpers.js                 公共 UI 绘制
 │   ├── services/
 │   │   ├── LocalSaveService.js           本地档案校验、保存、合并
 │   │   ├── CloudService.js              非阻塞云调用、超时降级
 │   │   ├── AudioManager.js              七类音效接口
 │   │   ├── HapticManager.js             限频的原生震动
-│   │   └── AdService.js / LeaderboardService.js  扩展空接口
+│   │   ├── LeaderboardService.js         榜单查询与公开昵称保存
+│   │   ├── UserInfoService.js            原生资料按钮、隐私授权与生命周期
+│   │   └── AdService.js                 广告扩展空接口
 │   └── utils/
 │       ├── Random.js                    可替换 seeded RNG
 │       └── MathUtils.js                 数值工具
 ├── cloudfunctions/
-│   ├── getPlayerProfile/               index.js + package.json
-│   ├── saveRunResult/                  index.js + package.json
-│   └── getGameConfig/                  index.js + package.json
+│   ├── getPlayerProfile/               index.js + package.json + player.js
+│   ├── saveRunResult/                  index.js + package.json + player.js
+│   ├── getGameConfig/                  index.js + package.json
+│   ├── getLeaderboard/                 index.js + package.json + player.js
+│   └── updatePlayerIdentity/           index.js + package.json + player.js
 ├── scripts/
 │   ├── check.mjs                       语法、JSON、引用检查
 │   └── serve-qa.mjs                    仅本机的 WebGL 验收服务
@@ -106,10 +116,12 @@ minigame-1/
 │   ├── core.test.mjs / merge.test.mjs / feedback.test.mjs
 │   ├── gameplay.test.mjs / recipes.test.mjs / runtime.test.mjs
 │   ├── storage.test.mjs / cloud.test.mjs / stability.test.mjs
+│   ├── modes.test.mjs / leaderboard.test.mjs / authorization.test.mjs
 │   ├── helpers/wxMock.mjs
 │   └── browser.html                    测试用 wx 适配与辅助按钮
 ├── docs/
 │   ├── 验收记录.md
+│   ├── 模式与排行榜部署.md
 │   └── previews/menu.png / gameplay.png
 └── audio/ / images/                    保留原素材，当前打包排除
 ```
@@ -145,6 +157,8 @@ BOOT、MENU、TUTORIAL、PLAYING、PAUSED、GAME_OVER 由 GameState 定义。不
 | COMBO_WINDOW | 1.2 | 连击窗口 |
 | LOST_DEPTH / LOST_SIDE_MARGIN | 190 / 150 | 可救援区外丢失边界 |
 | MISS_LIMIT / MAX_INGREDIENTS / MAX_PARTICLES | 3 / 30 / 180 | 失误与资源上限 |
+| ENDLESS_START_SCORE | 100 | 无尽初始分数 |
+| ENDLESS_LOSS_SCORES | 10 / 20 / 40 / 80 / 160 | 无尽模式逐级掉落扣分 |
 
 | 等级 | 半径 | 质量 | 基础分 |
 | --- | ---: | ---: | ---: |
@@ -158,7 +172,7 @@ BOOT、MENU、TUTORIAL、PLAYING、PAUSED、GAME_OVER 由 GameState 定义。不
 
 ## 6. 存档与声音
 
-本地键 `PanToss.save.v1` 使用 wx.getStorageSync / wx.setStorageSync，保存 tutorialCompleted、bestScore、bestCombo、totalGames、totalScore、recipesCompleted、soundEnabled、hapticEnabled。读取校验布尔值和非负安全整数；存储失败保留当前内存数据，但不能保证下次进入仍保存。
+本地键 `PanToss.save.v1` 保持兼容，新增 selectedMode 与 modes.classic / modes.endless，各模式独立保存最高分和统计。老存档只迁移到经典模式。仍保留全局统计、教程和设置；读取校验数据，存储失败保留内存但不能保证下次进入保存。
 
 每局先保存本地再请求云端；云统计按各字段较大值合并，最高分不倒退。本版没有离线单局队列、自动补交历史局数，离线累计留在本地，所以本地与云累计统计可能不同。
 
@@ -171,13 +185,13 @@ AudioManager 提供 playToss、playLand、playMerge、playAirMerge、playLose、
 1. 在微信开发者工具「云开发」创建或选择当前 AppID 有权限的环境，复制环境 ID。
 2. 修改唯一环境配置 `js/config/env.js`，把 `CLOUD_ENV_ID = 'YOUR_CLOUD_ENV_ID'` 中的占位字符串改为真实 ID。超时默认 5000ms。
 3. 在该环境创建 **players** 和 **game_config** 两个数据库集合。客户端经云函数访问，将集合设为客户端不可读写，使用服务端管理权限维护。
-4. 分别右键 **getPlayerProfile**、**saveRunResult**、**getGameConfig**，每个执行 **「上传并部署：云端安装依赖」**。项目已有 cloudfunctionRoot，三份函数各自固定依赖 wx-server-sdk 4.0.2，由云端安装。
+4. 分别右键 **getPlayerProfile**、**saveRunResult**、**getGameConfig**、**getLeaderboard**、**updatePlayerIdentity**，每个执行 **「上传并部署：云端安装依赖」**。固定依赖 wx-server-sdk 4.0.2。前三个已部署时，必须重新部署更新后的档案与结算函数。再按 [新增部署说明](docs/模式与排行榜部署.md) 创建两个索引、填写隐私保护指引。
 5. 重新编译，检查档案和配置云调用日志；完整结束一局，检查 saveRunResult 日志及 players 统计。OPENID 来自真实微信调用上下文，不能用本地手填身份替代此验证。
 6. 实测断网仍能开始、结算、重开；恢复网络后新的完整对局可正常提交。
 
 部署流程参考 [微信官方小游戏云开发示例](https://github.com/wechat-miniprogram/minigame-demo/blob/master/CLOUD_README.md)。真实平台部署需要有权限的账号环境。
 
-players 以服务端取得的 OPENID 作为文档 ID，自动创建；字段有 openid、bestScore、bestCombo、totalGames、totalScore、recipesCompleted、createdAt、updatedAt、lastPlayedAt、recentRunIds。
+players 以服务端 OPENID 作为文档 ID，自动创建；保留原统计，新增 modes、classicBestScore、endlessBestScore、classicPlayed、endlessPlayed，以及授权后才保存的 nickname、identityUpdatedAt。旧玩家在启动读取档案时迁移，完整 schema 见新增部署说明。
 
 game_config 可以先留空，使用本地默认值。远程调参时新增文档 ID 为 `current`，填写以下**平铺字段**（不要外套 config 对象）：
 
@@ -204,9 +218,11 @@ game_config 可以先留空，使用本地默认值。远程调参时新增文�
 
 未知字段、非有限数及无效值被忽略。配置在启动时读取、下一局重置时应用，不突然改变正在进行的局面。缺失、请求失败或超时使用本地默认值。
 
-- getPlayerProfile：服务端取得 OPENID，事务读取或创建档案，返回五个统计字段。
+- getPlayerProfile：服务端取得 OPENID，事务读取或创建档案，返回汇总、分模式统计及公开昵称。
 - saveRunResult：每局结束调用一次。score 0～10000000 整数、maxCombo 0～1000 整数、duration 大于 0 且不超过 86400 秒、recipesCompleted 0～1000 整数；事务更新、最近 40 个 runId 去重。网络/权限故障不能当作不存在而覆盖旧档案。只做基础校验，预留 replay/hash 验证位置。
 - getGameConfig：读取 game_config/current，仅返回六个白名单字段，客户端再次校验。
+- getLeaderboard：按模式每页 10 人查询，最多前 1000 人；本人名次单独计算，同分并列。不返回其他玩家 OPENID。
+- updatePlayerIdentity：仅保存已明确授权的公开昵称，事务保留已有成绩，忽略客户端声明的身份与分数。
 
 ## 8. 检查与验收边界
 
@@ -218,7 +234,7 @@ node --test --test-reporter=spec tests/*.test.mjs
 git diff --check
 ```
 
-已通过 26 项自动测试，包括固定步长、轻重颠锅、接锅、合成、Lv5、碰撞订单、三次失误、三步教程、100 次重开、后台暂停、存档容错、云超时、事务并发和去重、销毁后的迟到回调、30 个混合等级食材的 3600 步压力模拟、锅边界穿透修正、GL 批次边界。故障注入会刻意输出降级警告，属于预期。
+已通过 38 项自动测试。原物理、玩法、存档与云降级检查保留，并新增负分结束、0 分继续、模式隔离与迁移、跨页同分名次、公开字段保护、授权拒绝/迟到回调及从结算到排行到授权昵称的整条模拟流程。故障注入警告属于预期。
 
 运行本地真实 WebGL 验收网页：
 
@@ -251,3 +267,5 @@ node scripts/serve-qa.mjs
 | 8121a22 | 验收修复与实际 WebGL 验证 |
 
 最后另有中文文档提交，以 git log --oneline 为准。后续调参或补充素材应继续使用中文提交记录改动。
+
+2026-10-08 新增：0c9b674「模式扩展」、782efde「云排行」、fac1491「授权与榜单」、b5259de「界面验收」，另有部署文档提交，以 git log 为准。
