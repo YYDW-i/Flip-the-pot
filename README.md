@@ -4,12 +4,13 @@
 
 客户端使用原生 JavaScript、wx API 和 WebGL，无第三方游戏引擎，无 npm 运行依赖。云服务未配置时也可以完整游玩。
 
-直接用微信开发者工具打开本目录并编译。完整说明见 [README_DEV.md](README_DEV.md)，新增功能部署见 [模式与排行榜部署](docs/模式与排行榜部署.md)，实际检查见 [验收记录](docs/验收记录.md)。当前云环境仍为占位值，在 `js/config/env.js` 替换 `YOUR_CLOUD_ENV_ID` 后部署五个云函数。昵称授权由玩家主动点击，拒绝仍能匿名游玩与查看云排行。
+直接用微信开发者工具打开本目录并编译。完整说明见 [README_DEV.md](README_DEV.md)，新增功能部署见 [模式与排行榜部署](docs/模式与排行榜部署.md)，最新暂停、扣分、音效、火焰与颠锅改进见 [手感与音画修复](docs/手感与音画修复.md)。当前云环境仍为占位值，在 `js/config/env.js` 替换 `YOUR_CLOUD_ENV_ID` 后部署五个云函数。已部署的环境本次须更新 saveRunResult。昵称授权由玩家主动点击，拒绝仍能匿名游玩与查看云排行。
 
 本地 WebGL 实际画面（浏览器模拟 wx 接口，不代表微信真机验收）：
 
 ![双模式首页](docs/previews/modes-menu.png)
-![空中合成和料理](docs/previews/gameplay.png)
+![锅底火焰与叠放食材](docs/previews/fire-gameplay.png)
+![暂停页返回首页](docs/previews/pause-home.png)
 
 开发检查使用 Node.js 18 或更新版本，无需安装依赖：
 

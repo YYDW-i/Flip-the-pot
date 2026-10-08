@@ -1,6 +1,6 @@
 # 颠个锅 · PanToss 开发说明
 
-2026-10-08 更新：新增经典/无尽模式、模式独立存档、全服最高分榜和微信昵称授权。部署步骤、索引及授权说明见 [模式与排行榜部署](docs/模式与排行榜部署.md)。
+2026-10-08 更新：暂停可回首页，无尽扣分加强，接入七类本地音效与锅底火焰，并优化高级、叠放食材颠锅。说明和真机复测步骤见 [手感与音画修复](docs/手感与音画修复.md)。经典/无尽模式、全服榜及授权部署见 [模式与排行榜部署](docs/模式与排行榜部署.md)。
 
 ## 1. 打开与运行
 
@@ -20,10 +20,10 @@
 - 同类型、同等级、未到 Lv5 的食材真实碰撞才合成。新食材保留质量中心与近似动量，用冷却防止重复合成。
 - 双方离锅一段时间后的空中合成得分 ×2；1.2 秒窗口内连续合成增加连击，倍率从 ×1、×1.5、×2 逐步增加，上限 ×6。
 - 连续空中合成显示「完美颠锅」，强化光圈、粒子与浮字；高连击可触发 0.1 秒短暂慢动作，锅按真实时间继续响应。
-- 危险食材被玩家移锅接住后显示「救回来了！」并加 20 分。刚过锅沿不会立即判丢失；经典模式三次失误后结算。无尽模式从 100 分开始，掉落 Lv1～Lv5 分别扣 10/20/40/80/160，分数低于 0 才结束，0 分仍继续。
+- 危险食材被玩家移锅接住后显示「救回来了！」并加 20 分。刚过锅沿不会立即判丢失；经典模式三次失误后结算。无尽模式从 100 分开始，掉落扣分取 Lv1～Lv5 的 40/80/160/320/640 与当前分数 20%（向上取整）中较大值，分数低于 0 才结束，0 分仍继续。
 - 开局番茄 ×2、鸡蛋 ×2、蘑菇 ×1，三种食材各五级。高级食材更大、更重、更难颠。
 - 新食材约每 4 秒落下，逐渐加快，最低 2.35 秒；显示下一食材与落点预告，上限 30 个。
-- 点击暂停或进入后台会停止模拟，回到前台需点击「继续游戏」才恢复。
+- 点击暂停或进入后台会停止模拟，回到前台需点击「继续游戏」才恢复；暂停页可「回到首页」放弃本局，未结算成绩不入榜。
 - 「再颠一锅」清空并重置本局，不重载小游戏、不重复注册触摸监听。
 - 首页可选择经典/无尽模式；「玩法」可再次进行免罚练习，「设置」保存音效与震动开关，「排行榜」查看分模式全服榜、本人名次及授权昵称。
 
@@ -56,6 +56,7 @@ minigame-1/
 │   │   ├── gameConfig.js                集中的手感、物理、等级、反馈参数
 │   │   ├── recipes.js                   三份订单
 │   │   ├── modes.js                     模式 ID 与中文名称
+│   │   ├── audioConfig.js               七类本地音效路径和音量
 │   │   ├── env.js                       云环境 ID、请求超时
 │   │   └── remoteConfig.js              远程白名单与范围验证
 │   ├── core/
@@ -95,7 +96,7 @@ minigame-1/
 │   ├── services/
 │   │   ├── LocalSaveService.js           本地档案校验、保存、合并
 │   │   ├── CloudService.js              非阻塞云调用、超时降级
-│   │   ├── AudioManager.js              七类音效接口
+│   │   ├── AudioManager.js              原生音效播放、限频、开关试听
 │   │   ├── HapticManager.js             限频的原生震动
 │   │   ├── LeaderboardService.js         榜单查询与公开昵称保存
 │   │   ├── UserInfoService.js            原生资料按钮、隐私授权与生命周期
@@ -111,18 +112,22 @@ minigame-1/
 │   └── updatePlayerIdentity/           index.js + package.json + player.js
 ├── scripts/
 │   ├── check.mjs                       语法、JSON、引用检查
+│   ├── generate-sfx.mjs                原创 PCM WAV 音效生成器
 │   └── serve-qa.mjs                    仅本机的 WebGL 验收服务
 ├── tests/
 │   ├── core.test.mjs / merge.test.mjs / feedback.test.mjs
 │   ├── gameplay.test.mjs / recipes.test.mjs / runtime.test.mjs
 │   ├── storage.test.mjs / cloud.test.mjs / stability.test.mjs
 │   ├── modes.test.mjs / leaderboard.test.mjs / authorization.test.mjs
+│   ├── audio.test.mjs                   音效文件、打包和播放生命周期
 │   ├── helpers/wxMock.mjs
 │   └── browser.html                    测试用 wx 适配与辅助按钮
 ├── docs/
 │   ├── 验收记录.md
 │   ├── 模式与排行榜部署.md
+│   ├── 手感与音画修复.md
 │   └── previews/menu.png / gameplay.png
+├── assets/audio/*.wav                  实际随包分发的七类原创音效
 └── audio/ / images/                    保留原素材，当前打包排除
 ```
 
@@ -149,16 +154,19 @@ BOOT、MENU、TUTORIAL、PLAYING、PAUSED、GAME_OVER 由 GameState 定义。不
 | POT_FOLLOW_STIFFNESS / POT_DAMPING | 125 / 22 | 跟随与惯性收敛 |
 | POT_MAX_TILT | 14°（存储为弧度） | 倾斜上限 |
 | MIN_TOSS_SPEED / MAX_TOSS_SPEED | 260 / 2100 | 连续力度映射 |
-| TOSS_POWER / TOSS_MIN_POWER_RATIO | 1630 / 0.47 | 最大冲量、轻颠比例 |
+| TOSS_POWER / TOSS_MIN_POWER_RATIO | 1630 / 0.54 | 最大冲量、轻颠比例 |
 | TOSS_COOLDOWN | 0.4 | 两次颠锅间隔 |
-| TOSS_CONVERGENCE / TOSS_MASS_PENALTY | 0.75 / 0.18 | 汇聚趋势、大食材重量影响 |
+| TOSS_CONVERGENCE / TOSS_MASS_PENALTY | 0.75 / 0.08 | 汇聚趋势、大食材重量影响 |
+| TOSS_STACK_HEIGHT / TOSS_SUPPORT_GAP | 240 / 6 | 叠放受力范围、相连支撑容差 |
+| FIRE_FLAME_COUNT / FIRE_FLAME_HEIGHT | 13 / 72 | 炉头火苗数量与基础高度 |
 | INGREDIENT_RESTITUTION / INGREDIENT_FRICTION | 0.17 / 0.48 | 弹性与摩擦 |
 | SPAWN_INTERVAL / MIN_SPAWN_INTERVAL | 4 / 2.35 | 食材压力 |
 | COMBO_WINDOW | 1.2 | 连击窗口 |
 | LOST_DEPTH / LOST_SIDE_MARGIN | 190 / 150 | 可救援区外丢失边界 |
 | MISS_LIMIT / MAX_INGREDIENTS / MAX_PARTICLES | 3 / 30 / 180 | 失误与资源上限 |
 | ENDLESS_START_SCORE | 100 | 无尽初始分数 |
-| ENDLESS_LOSS_SCORES | 10 / 20 / 40 / 80 / 160 | 无尽模式逐级掉落扣分 |
+| ENDLESS_LOSS_SCORES | 40 / 80 / 160 / 320 / 640 | 无尽模式逐级掉落最低扣分 |
+| ENDLESS_LOSS_SCORE_RATIO | 0.2 | 掉落也至少损失当前分数的两成 |
 
 | 等级 | 半径 | 质量 | 基础分 |
 | --- | ---: | ---: | ---: |
@@ -176,7 +184,7 @@ BOOT、MENU、TUTORIAL、PLAYING、PAUSED、GAME_OVER 由 GameState 定义。不
 
 每局先保存本地再请求云端；云统计按各字段较大值合并，最高分不倒退。本版没有离线单局队列、自动补交历史局数，离线累计留在本地，所以本地与云累计统计可能不同。
 
-AudioManager 提供 playToss、playLand、playMerge、playAirMerge、playLose、playRecipe、playGameOver；当前没有指定合适音效资源，接口安全 no-op，设置界面已说明音效预留。添加合法本地声音后给 Game 中的 AudioManager 传入来源映射；若用 audio/ 中的文件，需要同时移除该目录的打包排除项。震动使用 wx.vibrateShort，限频且可关闭。
+AudioManager 已接入颠锅、落锅、合成、空中合成、掉落、料理出锅与结算七类原创本地音效，文件位于 assets/audio/，实际包含在小游戏包内。首次开始预加载，设置开启立即试听；关闭、进入后台及回首页停止声音。原生 InnerAudioContext 使用扬声器播放，忽略 iOS 静音拨片；系统媒体音量仍需由玩家调高。失败在控制台按音效名称报错一次。可用 `node scripts/generate-sfx.mjs` 重生成资源。震动使用 wx.vibrateShort，限频且可关闭。
 
 ## 7. 云开发：需要手动完成
 
@@ -234,7 +242,7 @@ node --test --test-reporter=spec tests/*.test.mjs
 git diff --check
 ```
 
-已通过 38 项自动测试。原物理、玩法、存档与云降级检查保留，并新增负分结束、0 分继续、模式隔离与迁移、跨页同分名次、公开字段保护、授权拒绝/迟到回调及从结算到排行到授权昵称的整条模拟流程。故障注入警告属于预期。
+已通过 45 项自动测试。包含暂停返回首页不提交弃局成绩、比例扣分、新负分结算云端校验、五级腾空、真实叠放受力与空中/锅外排除、音效格式和实际打包检查、开关试听及播放生命周期。原有模式、排行、授权、存档和物理稳定性检查仍通过。故障注入警告属于预期。
 
 运行本地真实 WebGL 验收网页：
 
