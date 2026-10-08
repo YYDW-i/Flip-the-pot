@@ -48,3 +48,24 @@ test('四份可单独部署的云档案 schema 完全一致', () => {
   const source = fs.readFileSync('cloudfunctions/getPlayerProfile/player.js', 'utf8');
   for (const name of ['saveRunResult', 'getLeaderboard', 'updatePlayerIdentity']) assert.equal(fs.readFileSync('cloudfunctions/' + name + '/player.js', 'utf8'), source);
 });
+
+test('真实 SDK 主键规则下，已有档案可结算、改名及迁移并正常上榜', async () => {
+  const mock = cloudMock(), get = mock.load('getPlayerProfile'), save = mock.load('saveRunResult'), identity = mock.load('updatePlayerIdentity'), board = mock.load('getLeaderboard');
+  mock.docs.set('players/trusted-user', { bestScore: 400, totalGames: 1, nickname: '旧昵称' });
+  assert.equal((await get()).ok, true);
+  assert.equal((await save(run('classic', 1200, 'existing-classic'))).ok, true);
+  assert.equal((await save(run('endless', 1500, 'existing-endless'))).ok, true);
+  assert.equal((await identity({ consent: true, nickname: '新昵称' })).ok, true);
+  const player = mock.docs.get('players/trusted-user'); assert.equal(Object.hasOwn(player, '_id'), false);
+  const classic = await board({ mode: 'classic' }), endless = await board({ mode: 'endless' });
+  assert.equal(classic.mine.score, 1200); assert.equal(endless.mine.score, 1500);
+  assert.equal(classic.entries[0].nickname, '新昵称'); assert.equal(endless.entries[0].nickname, '新昵称');
+});
+
+test('排行榜查询区分缺失索引及集合，避免错误显示为空榜', async () => {
+  const mock = cloudMock(), get = mock.load('getLeaderboard');
+  mock.db.collection = () => ({ where() { throw new Error('database index required'); } });
+  assert.equal((await get({ mode: 'classic' })).code, 'INDEX_REQUIRED');
+  mock.db.collection = () => ({ where() { throw new Error('collection players does not exist'); } });
+  assert.equal((await get({ mode: 'classic' })).code, 'COLLECTION_NOT_FOUND');
+});

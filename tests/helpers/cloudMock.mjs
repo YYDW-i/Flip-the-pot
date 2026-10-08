@@ -12,7 +12,15 @@ export function cloudMock() {
         return result;
       };
       return {
-        doc: id => ({ get: async () => ({ data: docs.get(name + '/' + id) }), set: async ({ data }) => { docs.set(name + '/' + id, data); writes++; } }),
+        doc: id => ({ get: async () => {
+          const data = docs.get(name + '/' + id);
+          if (!data) throw new Error('document with _id ' + id + ' does not exist');
+          return { data: structuredClone({ ...data, _id: id }) };
+        }, set: async ({ data }) => {
+          // wx-server-sdk 4.0.2 的读取包含 _id，set 禁止把 _id 写回。
+          if (Object.hasOwn(data, '_id')) throw new Error('不能更新_id的值');
+          docs.set(name + '/' + id, structuredClone(data)); writes++;
+        } }),
         where: conditions => query(conditions, orders, offset, size, fields),
         orderBy: (key, order) => query(conditions, [...orders, [key, order]], offset, size, fields),
         skip: offset => query(conditions, orders, offset, size, fields), limit: size => query(conditions, orders, offset, size, fields),

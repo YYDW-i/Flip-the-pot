@@ -6,11 +6,12 @@ import { validateRemoteConfig } from '../js/config/remoteConfig.js';
 import config from '../js/config/gameConfig.js';
 import { wxMock } from './helpers/wxMock.mjs';
 import Game from '../js/core/Game.js';
+import LeaderboardService from '../js/services/LeaderboardService.js';
 
 test('云环境占位、初始化抛错和请求超时均降级', async () => {
   const api = wxMock(); let calls = 0;
   api.cloud = { init: () => {}, callFunction: () => { calls++; } };
-  assert.equal((await new CloudService(api).bootstrap()).profile, null); assert.equal(calls, 0);
+  assert.equal((await new CloudService(api, 'YOUR_CLOUD_ENV_ID').bootstrap()).profile, null); assert.equal(calls, 0);
   const service = new CloudService(api, 'test-env', 5); assert.equal((await service.bootstrap()).profile, null); assert.equal(calls, 2);
   api.cloud.init = () => { throw new Error('云不可用'); }; assert.equal(await new CloudService(api, 'test-env', 5).init(), false);
   api.cloud.init = () => new Promise(() => {}); assert.equal(await new CloudService(api, 'test-env', 5).init(), false);
@@ -56,4 +57,28 @@ test('一局云结果只发一次，已销毁游戏忽略迟到的云响应', as
   newer.local.save({ bestScore: 1000 }); resolveCloud({ bestScore: 9000 });
   await Promise.resolve(); await Promise.resolve();
   assert.equal(api.storage.get('PanToss.save.v1').bestScore, 1000); newer.destroy();
+});
+
+test('云调用保留部署和索引错误，回调与 Promise 双返回只处理一次', async () => {
+  const api = wxMock(), cloud = new CloudService(api, 'test-env', 20);
+  api.cloud = { init() {}, callFunction(opts) {
+    opts.success({ result: { ok: false, code: 'INDEX_REQUIRED' } });
+    return Promise.resolve({ result: { ok: true, entries: [] } });
+  } };
+  await cloud.init(); assert.equal(await cloud.call('getLeaderboard'), null);
+  const board = new LeaderboardService(cloud); assert.match(board.errorMessage(), /索引/);
+  api.cloud.callFunction = opts => opts.fail({ errMsg: 'FUNCTION_NOT_FOUND: function not found' });
+  assert.equal(await board.getEntries('classic'), null); assert.match(board.errorMessage(), /未部署/);
+  api.cloud.callFunction = () => Promise.resolve({ result: { ok: true, entries: [], mine: null } });
+  assert.equal((await board.getEntries('classic')).entries.length, 0); assert.equal(cloud.errors.has('getLeaderboard'), false);
+});
+
+test('请求超时保留错误，迟到回调不会擦掉诊断，初始化并发只调用一次', async () => {
+  const api = wxMock(); let ready, late, initCalls = 0;
+  api.cloud = { init: () => { initCalls++; return new Promise(resolve => { ready = resolve; }); }, callFunction: opts => { late = opts.success; } };
+  const cloud = new CloudService(api, 'test-env', 10);
+  const first = cloud.init(), second = cloud.init(); ready(); await Promise.all([first, second]);
+  assert.equal(initCalls, 1); assert.equal(await cloud.call('getLeaderboard'), null);
+  assert.equal(cloud.errors.get('getLeaderboard').code, 'CLOUD_TIMEOUT');
+  late({ result: { ok: true, entries: [] } }); assert.equal(cloud.errors.get('getLeaderboard').code, 'CLOUD_TIMEOUT');
 });

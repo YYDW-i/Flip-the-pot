@@ -4,6 +4,8 @@ const number = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
 const stats = source => Object.fromEntries(FIELDS.map(key => [key, number(source && source[key])]));
 function normalize(source = {}) {
   const player = { ...source, ...stats(source) };
+  // doc.get 会返回数据库主键；doc.set 的 data 禁止包含 _id。
+  delete player._id;
   player.modes = Object.fromEntries(MODES.map(mode => [mode, stats(source.modes ? source.modes[mode] : mode === 'classic' ? source : null)]));
   for (const mode of MODES) {
     player[mode + 'BestScore'] = player.modes[mode].bestScore;

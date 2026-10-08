@@ -1,6 +1,16 @@
 import { modeId } from '../config/modes.js';
 export default class LeaderboardService {
   constructor(cloud) { this.cloud = cloud; }
+  errorMessage() {
+    const error = this.cloud.errors && (this.cloud.errors.get('getLeaderboard') || this.cloud.errors.get('init'));
+    const messages = {
+      ENV_NOT_CONFIGURED: '排行榜服务尚未配置', CLOUD_UNSUPPORTED: '当前微信版本不支持云排行榜',
+      FUNCTION_NOT_FOUND: '排行榜服务尚未部署', COLLECTION_NOT_FOUND: '排行榜数据集合尚未创建',
+      INDEX_REQUIRED: '排行榜索引尚未就绪', CLOUD_TIMEOUT: '连接超时，请稍后刷新',
+      UNAUTHENTICATED: '微信登录未完成，请重新进入', DATABASE_UNAVAILABLE: '排行榜数据读取失败，请稍后刷新'
+    };
+    return messages[error && error.code] || '连接失败，请稍后刷新';
+  }
   async getEntries(mode, page = 0) {
     if (!this.cloud.available && !await this.cloud.init()) return null;
     const id = modeId(mode), result = await this.cloud.call('getLeaderboard', { mode: id, page });

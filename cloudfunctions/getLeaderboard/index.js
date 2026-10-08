@@ -31,5 +31,10 @@ exports.main = async (event = {}) => {
     return { ok: true, mode, page, hasNext: page < 99 && rows.length > 10, entries,
       mine: { nickname: name(mine || {}), score: mine ? mine.modes[mode].bestScore : 0,
         rank: mine && mine.modes[mode].totalGames > 0 ? mineHigher.total + 1 : null } };
-  } catch (e) { console.error('getLeaderboard 查询失败', e.message); return { ok: false, code: 'DATABASE_UNAVAILABLE' }; }
+  } catch (e) {
+    const detail = e.errMsg || e.message || String(e);
+    console.error('getLeaderboard 查询失败', detail);
+    const code = /index|索引/i.test(detail) ? 'INDEX_REQUIRED' : /collection.*(?:not exist|not found)|集合.*不存在/i.test(detail) ? 'COLLECTION_NOT_FOUND' : 'DATABASE_UNAVAILABLE';
+    return { ok: false, code };
+  }
 };
