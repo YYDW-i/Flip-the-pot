@@ -1,26 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
+import { cloudMock } from './helpers/cloudMock.mjs';
 import CloudService from '../js/services/CloudService.js';
 import { validateRemoteConfig } from '../js/config/remoteConfig.js';
 import config from '../js/config/gameConfig.js';
 import { wxMock } from './helpers/wxMock.mjs';
 import Game from '../js/core/Game.js';
-
-function cloudMock() {
-  const docs = new Map(); let queue = Promise.resolve(), writes = 0;
-  const collection = name => ({ doc: id => ({
-    get: async () => ({ data: docs.get(name + '/' + id) }),
-    set: async ({ data }) => { docs.set(name + '/' + id, data); writes++; }
-  }) });
-  const db = { collection, serverDate: () => new Date(), runTransaction: callback => {
-    const result = queue.then(() => callback({ collection })); queue = result.catch(() => {}); return result;
-  } };
-  const cloud = { init() {}, database: () => db, getWXContext: () => ({ OPENID: 'trusted-user' }), DYNAMIC_CURRENT_ENV: 'env' };
-  const load = name => { const exports = {}; vm.runInNewContext(fs.readFileSync('cloudfunctions/' + name + '/index.js', 'utf8'), { require: () => cloud, exports, console }); return exports.main; };
-  return { docs, db, load, get writes() { return writes; } };
-}
 
 test('云环境占位、初始化抛错和请求超时均降级', async () => {
   const api = wxMock(); let calls = 0;
