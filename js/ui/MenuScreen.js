@@ -29,7 +29,7 @@ export default class MenuScreen {
     r.label('设置', 375, s.panel.y + 56, 37, '#514236', 'center', true);
     button(r, s.sound, '音效：' + (game.audio.enabled ? '开' : '关'), false);
     button(r, s.haptic, '震动：' + (game.haptics.enabled ? '开' : '关'), false);
-    r.label('本版音效接口已预留', 375, s.panel.y + 282, 20, '#9c8d78', 'center');
+    r.label('打开音效即可试听', 375, s.panel.y + 282, 20, '#9c8d78', 'center');
     button(r, s.close, '完成');
   }
 }

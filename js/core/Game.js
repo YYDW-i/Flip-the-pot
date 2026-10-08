@@ -153,7 +153,7 @@ export default class Game {
     const initial = this.config.INITIAL_INGREDIENTS;
     initial.forEach((type, i) => this.world.add(type, 1, this.pot.positionX + (i - (initial.length - 1) / 2) * this.config.INITIAL_SPACING, this.pot.positionY - 8));
   }
-  start(forceTutorial = false) { this.resetRun(); this.setState(forceTutorial || !this.tutorialCompleted ? State.TUTORIAL : State.PLAYING); }
+  start(forceTutorial = false) { this.audio.prepare(); this.resetRun(); this.setState(forceTutorial || !this.tutorialCompleted ? State.TUTORIAL : State.PLAYING); }
   selectMode(value) {
     if (this.state !== State.MENU) return;
     this.mode = modeId(value); this.local.save({ selectedMode: this.mode }); this.bestScore = this.local.best(this.mode);
@@ -178,7 +178,7 @@ export default class Game {
       if (this.leaderboardOpen) { this.tapLeaderboard(point); return; }
       if (this.settingsOpen) {
         const s = this.menu.settingsLayout(this.camera);
-        if (inside(point, s.sound)) this.audio.enabled = !this.audio.enabled;
+        if (inside(point, s.sound)) this.audio.setEnabled(!this.audio.enabled);
         else if (inside(point, s.haptic)) { this.haptics.enabled = !this.haptics.enabled; this.haptics.light(); }
         else if (inside(point, s.close)) this.settingsOpen = false;
         this.local.save({ soundEnabled: this.audio.enabled, hapticEnabled: this.haptics.enabled });
