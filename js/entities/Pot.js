@@ -42,22 +42,49 @@ export default class Pot {
     }
   }
   localX(body) { return (body.position.x - this.positionX) * Math.cos(this.rotation) + (body.position.y - this.positionY) * Math.sin(this.rotation); }
+  supportedBodies(bodies, time) {
+    const c = this.config, cos = Math.cos(this.rotation), sin = Math.sin(this.rotation);
+    const candidates = bodies.filter(body => {
+      if (!body.alive || Math.abs(body.velocity.y - this.velocityY) > c.TOSS_SUPPORT_MAX_SPEED) return false;
+      const dx = body.position.x - this.positionX, dy = body.position.y - this.positionY;
+      const x = dx * cos + dy * sin, y = -dx * sin + dy * cos;
+      return Math.abs(x) + body.radius * 0.35 <= c.POT_WIDTH / 2 &&
+        y <= c.POT_BOTTOM_Y + c.CONTACT_SLOP && y >= c.POT_BOTTOM_Y - c.TOSS_STACK_HEIGHT;
+    });
+    const supported = new Set(candidates.filter(body => time - body.lastPanContactTime <= c.TOSS_CONTACT_WINDOW));
+    // 从锅内的直接接触食材向上寻找相连支撑，叠放的食材一起受到颠锅冲量。
+    // 先计算完整支撑链再施加速度，避免数组顺序影响结果。
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const body of candidates) {
+        if (supported.has(body)) continue;
+        for (const base of supported) {
+          const dx = body.position.x - base.position.x, dy = body.position.y - base.position.y;
+          const radius = body.radius + base.radius + c.TOSS_SUPPORT_GAP;
+          if (-dx * sin + dy * cos < -body.radius * 0.25 && dx * dx + dy * dy <= radius * radius) {
+            supported.add(body); changed = true; break;
+          }
+        }
+      }
+    }
+    return supported;
+  }
   toss(bodies, gesture, time) {
     if (this.cooldown > 0) return 0;
     const c = this.config;
     const strength = clamp((gesture.speed - c.MIN_TOSS_SPEED) / (c.MAX_TOSS_SPEED - c.MIN_TOSS_SPEED), 0, 1);
     const power = c.TOSS_POWER * (c.TOSS_MIN_POWER_RATIO + (1 - c.TOSS_MIN_POWER_RATIO) * strength) * c.TOSS_POWER_MULTIPLIER;
     let count = 0; const nextId = this.tossId + 1;
-    for (const body of bodies) {
-      if (!body.alive || time - body.lastPanContactTime > c.TOSS_CONTACT_WINDOW) continue;
-      const rx = this.localX(body), dy = body.position.y - this.positionY;
-      if (Math.abs(rx) > c.POT_WIDTH / 2 + body.radius || dy > c.POT_DEPTH || dy < -c.POT_DEPTH * 1.6) continue;
+    for (const body of this.supportedBodies(bodies, time)) {
+      const rx = this.localX(body);
       const massFactor = 1 / (1 + (body.mass - 1) * c.TOSS_MASS_PENALTY);
       const lift = power * massFactor * (1 + 0.05 * Math.abs(rx) / (c.POT_WIDTH / 2));
       body.velocity.y = -lift * Math.cos(this.rotation);
       body.velocity.x += this.velocityX * c.TOSS_PAN_VELOCITY_FACTOR + gesture.velocityX * c.TOSS_HORIZONTAL_FACTOR + Math.sin(this.rotation) * lift * 0.45 - rx * c.TOSS_CONVERGENCE;
       body.velocity.x = clamp(body.velocity.x, -c.MAX_BODY_SPEED, c.MAX_BODY_SPEED);
-      body.position.y -= 4; body.angularVelocity += rx * 0.012; body.tossId = nextId; body.pop = 0.12; count++;
+      body.position.y -= 4; body.angularVelocity += rx * 0.012; body.tossId = nextId; body.pop = 0.12;
+      body.lastPanContactTime = time; body.airborne = false; count++;
     }
     if (count) { this.tossId = nextId; this.cooldown = c.TOSS_COOLDOWN; this.kick = 0.16; }
     return count;
