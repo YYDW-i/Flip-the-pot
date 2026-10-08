@@ -35,6 +35,22 @@ export default class RendererGL {
     b.roundedRect(w / 2 - 130, pot.baseY + 112, 260, 46, 18, [0.5, 0.44, 0.35, 0.35]);
     b.ellipse(w / 2, pot.baseY + 115, 95, 16, [0.32, 0.31, 0.29, 0.3]);
   }
+  drawFire(pot, time) {
+    const b = this.batch, center = this.camera.width / 2, base = pot.baseY + 113;
+    b.ellipse(center, base - 31, 115, 47, [1, 0.42, 0.08, 0.1 + Math.sin(time * 5) * 0.02]);
+    b.ellipse(center, base, 96, 14, [0.14, 0.18, 0.2, 0.8]);
+    for (let i = 0; i < this.config.FIRE_FLAME_COUNT; i++) {
+      const phase = i * 1.73, x = center + (i - (this.config.FIRE_FLAME_COUNT - 1) / 2) * 14;
+      const edge = Math.abs(x - center) / 100;
+      const height = this.config.FIRE_FLAME_HEIGHT * (0.85 - edge * 0.18 + Math.sin(time * 8 + phase) * 0.22);
+      const sway = Math.sin(time * 6 + phase) * 8, y = base + Math.sin(phase) * 3;
+      b.ellipse(x, y, 10, 7, [0.16, 0.52, 1, 0.92], 16);
+      b.polygon([[x - 8, y - 3], [x - 11, y - height * 0.3], [x - 4, y - height * 0.65],
+        [x + sway, y - height], [x + 4 + sway, y - height * 0.55], [x + 10, y - height * 0.25], [x + 8, y - 3]], [1, 0.35, 0.08, 0.94]);
+      b.polygon([[x - 5, y - 2], [x - 5, y - height * 0.27], [x + sway * 0.5, y - height * 0.65],
+        [x + 5, y - height * 0.23], [x + 5, y - 2]], [1, 0.82, 0.25, 1]);
+    }
+  }
   drawPot(pot, centerX = pot.positionX, centerY = pot.positionY, rotation = pot.rotation) {
     const b = this.batch, c = this.config, half = c.POT_WIDTH / 2, bottom = half * c.POT_BOTTOM_RATIO;
     b.ellipse(centerX, centerY + 83, half * 0.9, 18, C.shadow);
@@ -90,7 +106,7 @@ export default class RendererGL {
     }
     const shake = game.particles.shakePower * Math.min(1, game.particles.shakeTime * 8);
     this.batch.root(Math.sin(game.world.time * 90) * shake, Math.cos(game.world.time * 110) * shake * 0.5);
-    this.drawPot(game.pot);
+    this.drawFire(game.pot, game.visualTime); this.drawPot(game.pot);
     for (const body of game.world.bodies) {
       if (!body.alive) continue;
       if (body.danger) this.batch.circle(clamp(body.position.x, 24, camera.width - 24), clamp(body.position.y, camera.hudTop + 150, camera.height - 50), body.radius + 8, [1, 0.3, 0.15, 0.16 + Math.sin(game.world.time * 12) * 0.06]);

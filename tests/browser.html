@@ -11,18 +11,32 @@ body{height:100vh;overflow:hidden}aside{max-height:calc(100vh - 48px);overflow-y
 <button id="capture">保存画面</button><p id="capture-status"></p>
 <button id="classic">经典模式（测试）</button><button id="endless">无尽模式（测试）</button>
 <button id="drop-one">掉落一级（测试）</button><button id="drop-five">掉落五级（测试）</button><button id="mock-board">模拟云榜（测试）</button>
+<select id="food-level"><option value="1">一级食材</option><option value="2">二级食材</option><option value="3">三级食材</option><option value="4">四级食材</option><option value="5">五级食材</option></select>
+<button id="place-food">放入所选等级</button><button id="stack-food">放入二三级叠放</button><br>
+<select id="sound"><option value="toss">颠锅</option><option value="land">落锅</option><option value="merge">合成</option><option value="airMerge">空中合成</option><option value="lose">掉落</option><option value="recipe">料理出锅</option><option value="gameOver">结算</option></select><button id="play-sound">试听音效</button>
 <p>模拟云榜只显示测试数据，不连接真实云端或发起微信授权。</p>
 <pre id="status"></pre><pre id="errors"></pre></aside>
 <script type="module">
 import Game from '../js/core/Game.js';
 import State from '../js/core/GameState.js';
 const canvas = document.querySelector('#game'), listeners = new Map(); let width = 375, height = 667;
+const audioStatus = { loaded: 0, played: 0, errors: [] };
 const api = {
   createCanvas: () => canvas, createOffscreenCanvas: () => document.createElement('canvas'),
   getWindowInfo: () => ({windowWidth:width,windowHeight:height,pixelRatio:devicePixelRatio,safeArea:{top:24,bottom:height-20}}),
   getMenuButtonBoundingClientRect: () => ({bottom:52}),
   getStorageSync: key => JSON.parse(localStorage.getItem(key) || 'null'), setStorageSync: (key,value) => localStorage.setItem(key,JSON.stringify(value)),
-  vibrateShort() {}
+  vibrateShort() {}, setInnerAudioOption() {},
+  createInnerAudioContext() {
+    const audio = new Audio(); audio.preload = 'auto'; let onError = () => {};
+    audio.addEventListener('loadeddata', () => audioStatus.loaded++);
+    audio.addEventListener('playing', () => audioStatus.played++);
+    const fail = e => { const message = String(e.message || audio.error && audio.error.message || e); audioStatus.errors.push(message); onError({ errMsg: message }); };
+    audio.addEventListener('error', fail);
+    return { set src(value) { audio.src = '/' + value; }, set volume(value) { audio.volume = value; },
+      onError(handler) { onError = handler; }, play() { audio.play().catch(fail); },
+      stop() { audio.pause(); audio.currentTime = 0; }, destroy() { audio.pause(); audio.removeAttribute('src'); audio.load(); } };
+  }
 };
 for(const name of ['TouchStart','TouchMove','TouchEnd','TouchCancel','Hide','Show','WindowResize']){
   listeners.set(name,new Set());api['on'+name]=fn=>listeners.get(name).add(fn);api['off'+name]=fn=>listeners.get(name).delete(fn);
@@ -41,7 +55,16 @@ const game=new Game(api);window.qaGame=game;
 document.querySelector('#device').onchange=e=>{[width,height]=e.target.value.split(',').map(Number);const scale=Math.min(1,667/height);canvas.style.width=width*scale+'px';canvas.style.height=height*scale+'px';emit('WindowResize',{});};
 document.querySelector('#start').onclick=()=>game.start();document.querySelector('#skip').onclick=()=>game.completeTutorial();
 document.querySelector('#pause').onclick=()=>game.state===State.PAUSED?game.resume():game.pause();
-document.querySelector('#menu').onclick=()=>game.setState(State.MENU);
+document.querySelector('#menu').onclick=()=>game.returnHome();
+document.querySelector('#play-sound').onclick=()=>{game.audio.enabled=true;game.audio.play(document.querySelector('#sound').value);};
+document.querySelector('#place-food').onclick=()=>{
+  if(!game.active())game.completeTutorial();game.world.reset();
+  game.world.add('tomato',Number(document.querySelector('#food-level').value),game.pot.positionX,game.pot.baseY-90);
+};
+document.querySelector('#stack-food').onclick=()=>{
+  if(!game.active())game.completeTutorial();game.world.reset();
+  [2,3,1].forEach((level,i)=>game.world.add(game.config.TYPES[i].id,level,game.pot.positionX,game.pot.baseY-40-i*85));
+};
 for(const mode of ['classic','endless'])document.querySelector('#'+mode).onclick=()=>{game.setState(State.MENU);game.selectMode(mode);};
 for(const [name,level] of [['drop-one',1],['drop-five',5]])document.querySelector('#'+name).onclick=()=>{
   if(!game.active())return;game.world.add('egg',level,375,game.camera.height+300);
@@ -62,5 +85,5 @@ document.querySelector('#air').onclick=()=>pair(['tomato','tomato'],1);
 document.querySelector('#recipe').onclick=()=>{const req=game.recipe.current.ingredients;pair(req.map(r=>r.type),Math.max(...req.map(r=>r.level)))};
 document.querySelector('#lose').onclick=()=>{if(!game.active())game.completeTutorial();for(let i=0;i<3;i++){const b=game.world.add('egg',1,375,game.camera.height+300);if(b)b.velocity.y=100;}};
 document.querySelector('#capture').onclick=()=>requestAnimationFrame(()=>{game.renderer.render(game);canvas.toBlob(async blob=>{try{const response=await fetch('/qa/capture',{method:'POST',body:blob});document.querySelector('#capture-status').textContent=await response.text();}catch(error){document.querySelector('#capture-status').textContent=String(error);}},'image/png');});
-setInterval(()=>{document.querySelector('#status').textContent=JSON.stringify({state:game.state,mode:game.mode,score:game.score.score,peak:game.score.peak,combo:game.combo.count,lost:game.lostCount,board:game.leaderboardOpen?{mode:game.board.mode,page:game.board.page,phase:game.board.phase}:null,ingredients:game.world.bodies.length,particles:game.particles.count,textures:game.renderer.text.cache.size,glError:game.renderer.gl.getError(),tutorialStep:game.tutorial.step,potX:Math.round(game.pot.positionX),errorCount:errors.length},null,2)},200);
+setInterval(()=>{document.querySelector('#status').textContent=JSON.stringify({state:game.state,mode:game.mode,score:game.score.score,peak:game.score.peak,combo:game.combo.count,lost:game.lostCount,board:game.leaderboardOpen?{mode:game.board.mode,page:game.board.page,phase:game.board.phase}:null,ingredients:game.world.bodies.length,particles:game.particles.count,textures:game.renderer.text.cache.size,glError:game.renderer.gl.getError(),tutorialStep:game.tutorial.step,potX:Math.round(game.pot.positionX),audio:audioStatus,errorCount:errors.length},null,2)},200);
 </script></body></html>

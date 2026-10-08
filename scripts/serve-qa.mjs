@@ -18,9 +18,9 @@ http.createServer((request, response) => {
     return;
   }
   if (pathname === '/') pathname = '/tests/browser.html';
-  if (!pathname.startsWith('/js/') && pathname !== '/tests/browser.html') { response.writeHead(404).end(); return; }
+  if (!pathname.startsWith('/js/') && !pathname.startsWith('/assets/audio/') && pathname !== '/tests/browser.html') { response.writeHead(404).end(); return; }
   const file = path.resolve(root, '.' + pathname);
   if (!file.startsWith(root + path.sep) || !fs.existsSync(file)) { response.writeHead(404).end(); return; }
-  response.setHeader('Content-Type', file.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/javascript; charset=utf-8');
+  response.setHeader('Content-Type', file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.wav') ? 'audio/wav' : 'application/javascript; charset=utf-8');
   response.setHeader('Cache-Control', 'no-store'); fs.createReadStream(file).pipe(response);
 }).listen(port, '127.0.0.1', () => console.log('WebGL 验证页面：http://127.0.0.1:' + port));
