@@ -162,6 +162,7 @@ export default class Game {
   completeTutorial() { this.tutorialCompleted = true; this.local.save({ tutorialCompleted: true }); this.start(); }
   pause() { if (this.state === State.PLAYING || this.state === State.TUTORIAL) { this.pauseReturn = this.state; this.setState(State.PAUSED); } }
   resume() { if (this.state === State.PAUSED) { this.loop.resetClock(); this.setState(this.pauseReturn || State.PLAYING); } }
+  returnHome() { this.audio.stop(); this.resetRun(); this.setState(State.MENU); }
   dragStart(point) {
     if (!this.active() || point.y < this.camera.height * 0.4) return false;
     this.dragOffset = this.pot.targetX - point.x;
@@ -192,10 +193,12 @@ export default class Game {
       else if (inside(point, l.leaderboard)) this.loadLeaderboard();
     } else if (this.state === State.PAUSED) {
       const l = this.gameOver.pauseLayout(this.camera);
-      if (inside(point, l.resume)) this.resume(); else if (inside(point, l.restart)) this.start();
+      if (inside(point, l.resume)) this.resume();
+      else if (inside(point, l.restart)) this.start();
+      else if (inside(point, l.menu)) this.returnHome();
     } else if (this.state === State.GAME_OVER) {
       const l = this.gameOver.layout(this.camera);
-      if (inside(point, l.restart)) this.start(); else if (inside(point, l.menu)) this.setState(State.MENU);
+      if (inside(point, l.restart)) this.start(); else if (inside(point, l.menu)) this.returnHome();
     } else if (this.active()) {
       if (inside(point, this.hud.pauseRect(this.camera))) this.pause();
       else if (this.state === State.TUTORIAL && inside(point, this.tutorial.skipRect(this.camera))) this.completeTutorial();

@@ -8,7 +8,7 @@ function validRun(event) {
   return event && (event.mode === undefined || MODES.includes(event.mode)) && bounded(event.score, 10000000) && bounded(event.maxCombo, 1000) &&
     typeof event.duration === 'number' && Number.isFinite(event.duration) && event.duration > 0 && event.duration <= 86400 &&
     bounded(event.recipesCompleted, 1000) &&
-    (event.finalScore === undefined || (Number.isInteger(event.finalScore) && event.finalScore >= (event.mode === 'endless' ? -160 : 0) && event.finalScore <= event.score)) &&
+    (event.finalScore === undefined || (Number.isInteger(event.finalScore) && event.finalScore >= (event.mode === 'endless' ? -640 : 0) && event.finalScore <= event.score)) &&
     (event.runId === undefined || (typeof event.runId === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(event.runId)));
 }
 exports.main = async event => {

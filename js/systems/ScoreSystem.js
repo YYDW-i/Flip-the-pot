@@ -3,7 +3,8 @@ export default class ScoreSystem {
   reset(initial = 0) { this.score = initial; this.peak = initial; this.recipesCompleted = 0; }
   award(value) { const points = Math.max(0, Math.round(value)); this.score += points; this.peak = Math.max(this.peak, this.score); return points; }
   lose(level) {
-    const points = this.config.ENDLESS_LOSS_SCORES[Math.max(0, Math.min(4, level - 1))];
+    const base = this.config.ENDLESS_LOSS_SCORES[Math.max(0, Math.min(4, level - 1))];
+    const points = Math.max(base, Math.ceil(Math.max(0, this.score) * this.config.ENDLESS_LOSS_SCORE_RATIO));
     this.score -= points; return points;
   }
   merge(level, multiplier = 1) { return this.award(this.config.LEVELS[level - 1].score * multiplier); }

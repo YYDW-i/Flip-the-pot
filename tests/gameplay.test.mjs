@@ -9,6 +9,18 @@ import { wxMock } from './helpers/wxMock.mjs';
 function setup() { const api = wxMock(); return { api, game: new Game(api, { autoStart: false, raf: () => 0, caf: () => {}, seed: 10 }) }; }
 const frames = (game, count) => { for (let i = 0; i < count; i++) game.update(config.FIXED_DT); };
 
+test('暂停页返回首页放弃本局，再开清空状态且不提交未结算成绩', () => {
+  const { game } = setup(); game.tutorialCompleted = true; game.selectMode('endless'); game.start();
+  game.score.award(800); frames(game, 10); game.pause(); let saves = 0;
+  game.cloud.saveRunResult = () => { saves++; return Promise.resolve(null); };
+  const rect = game.gameOver.pauseLayout(game.camera).menu;
+  game.tap({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
+  assert.equal(game.state, State.MENU); assert.equal(game.mode, 'endless');
+  assert.equal(game.score.score, 100); assert.equal(game.result, null); assert.equal(saves, 0);
+  assert.equal(game.local.best('endless'), 0); assert.equal(game.world.bodies.length, 5);
+  game.start(); assert.equal(game.state, State.PLAYING); assert.equal(game.runDuration, 0); game.destroy();
+});
+
 test('三步练习以实际拖锅、上甩、接锅推进，然后进入正式挑战', () => {
   const { game } = setup(); assert.equal(game.state, State.MENU);
   game.start(); assert.equal(game.state, State.TUTORIAL);

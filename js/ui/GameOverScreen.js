@@ -17,12 +17,16 @@ export default class GameOverScreen {
     button(r, l.restart, '再颠一锅'); button(r, l.menu, '回到首页', false);
   }
   pauseLayout(camera) {
-    const p = centeredPanel(camera, 410);
-    return { panel: p, resume: { x: p.x + 80, y: p.y + 137, w: p.w - 160, h: 85 }, restart: { x: p.x + 100, y: p.y + 265, w: p.w - 200, h: 65 } };
+    const p = centeredPanel(camera, 520);
+    return { panel: p, resume: { x: p.x + 80, y: p.y + 127, w: p.w - 160, h: 85 },
+      restart: { x: p.x + 100, y: p.y + 246, w: p.w - 200, h: 65 },
+      menu: { x: p.x + 100, y: p.y + 343, w: p.w - 200, h: 65 } };
   }
   renderPause(r) {
     const l = this.pauseLayout(r.camera); panel(r, l.panel);
     r.label('先歇一会儿', 375, l.panel.y + 66, 40, '#514236', 'center', true);
     button(r, l.resume, '继续游戏'); button(r, l.restart, '重新来一锅', false);
+    button(r, l.menu, '回到首页', false);
+    r.label('回到首页将放弃本局', 375, l.panel.y + 460, 21, '#96836d', 'center');
   }
 }

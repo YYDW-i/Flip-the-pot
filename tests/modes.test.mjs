@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import Game from '../js/core/Game.js';
 import State from '../js/core/GameState.js';
 import LocalSaveService from '../js/services/LocalSaveService.js';
+import ScoreSystem from '../js/systems/ScoreSystem.js';
+import config from '../js/config/gameConfig.js';
+import { cloudMock } from './helpers/cloudMock.mjs';
 import { wxMock } from './helpers/wxMock.mjs';
 const options = { autoStart: false, raf: () => 0, caf: () => {}, seed: 12 };
 function drop(game, level) {
@@ -10,15 +13,27 @@ function drop(game, level) {
   game.checkLost(); return b;
 }
 
-test('无尽模式没有机会计数，十次掉落达到零分仍继续，负分才结束', () => {
+test('高分局低级掉落也损失两成，连续失误能耗尽积分，云端接受新的负分结算', async () => {
+  const score = new ScoreSystem(config); score.reset(10000);
+  assert.equal(score.lose(1), 2000); assert.equal(score.score, 8000);
+  let drops = 1; while (score.score >= 0 && drops < 100) { score.lose(1); drops++; }
+  assert.ok(score.score < 0); assert.ok(drops < 30); assert.equal(score.peak, 10000);
+  const save = cloudMock().load('saveRunResult');
+  const run = { mode: 'endless', score: 100, finalScore: -540, maxCombo: 0, duration: 10, recipesCompleted: 0, runId: 'large-loss' };
+  assert.equal((await save(run)).ok, true);
+  assert.equal((await save({ ...run, finalScore: -641 })).code, 'INVALID_RUN');
+});
+
+test('无尽模式加重扣分，零分仍继续，负分才结束且没有机会计数', () => {
   const game = new Game(wxMock(), options); game.tutorialCompleted = true; game.selectMode('endless'); game.start();
   assert.equal('lostCount' in game, false); assert.equal(game.score.score, 100);
-  for (let i = 0; i < 10; i++) drop(game, 1);
+  game.score.award(20);
+  for (let i = 0; i < 3; i++) drop(game, 1);
   assert.equal(game.score.score, 0); assert.equal(game.endingTime, 0); assert.equal('lostCount' in game, false);
-  game.score.award(20); drop(game, 2); assert.equal(game.score.score, 0); assert.equal(game.endingTime, 0);
-  drop(game, 3); assert.equal(game.score.score, -40); assert.ok(game.endingTime > 0);
+  game.score.award(80); drop(game, 2); assert.equal(game.score.score, 0); assert.equal(game.endingTime, 0);
+  drop(game, 3); assert.equal(game.score.score, -160); assert.ok(game.endingTime > 0);
   for (let i = 0; i < 40; i++) game.update(1 / 60);
-  assert.equal(game.state, State.GAME_OVER); assert.equal(game.result.score, 100); assert.equal(game.result.finalScore, -40);
+  assert.equal(game.state, State.GAME_OVER); assert.equal(game.result.score, 120); assert.equal(game.result.finalScore, -160);
   game.start(); assert.equal(game.score.score, 100); assert.equal(game.mode, 'endless'); game.destroy();
 });
 
@@ -26,7 +41,7 @@ test('高级食材扣分更多，教程丢失免罚，两个模式的最高分�
   const api = wxMock(), game = new Game(api, options); game.selectMode('endless'); game.start();
   drop(game, 5); assert.equal(game.score.score, 100); assert.equal(game.endingTime, 0);
   game.completeTutorial(); game.score.award(500); drop(game, 5);
-  assert.equal(game.score.score, 440); assert.equal(game.score.peak, 600);
+  assert.equal(game.score.score, -40); assert.equal(game.score.peak, 600);
   game.finishRun(); assert.equal(game.bestScore, 600);
   game.setState(State.MENU); game.selectMode('classic'); game.start();
   assert.equal(game.bestScore, 0); assert.equal(game.score.score, 0); assert.equal(game.lostCount, 0);
