@@ -4,7 +4,7 @@
 
 客户端使用原生 JavaScript、wx API 和 WebGL，无第三方游戏引擎，无 npm 运行依赖。云服务未配置时也可以完整游玩。
 
-直接用微信开发者工具打开本目录并编译。完整说明见 [README_DEV.md](README_DEV.md)，新增功能部署见 [模式与排行榜部署](docs/模式与排行榜部署.md)，最新暂停、扣分、音效、火焰与颠锅改进见 [手感与音画修复](docs/手感与音画修复.md)。当前云环境仍为占位值，在 `js/config/env.js` 替换 `YOUR_CLOUD_ENV_ID` 后部署五个云函数。已部署的环境本次须更新 saveRunResult。昵称授权由玩家主动点击，拒绝仍能匿名游玩与查看云排行。
+直接用微信开发者工具打开本目录并编译。完整说明见 [README_DEV.md](README_DEV.md)，模式部署见 [模式与排行榜部署](docs/模式与排行榜部署.md)，音画改进见 [手感与音画修复](docs/手感与音画修复.md)。已保留当前云环境配置。v1.0.1 修复数据库主键写回导致成绩无法保存的问题，首次进入自动弹出隐私授权及昵称引导，排行榜不再放置授权按钮。**本次须重新上传 getPlayerProfile、saveRunResult、getLeaderboard、updatePlayerIdentity 四个云函数**，步骤见 [排行榜与首次授权修复](docs/排行榜与首次授权修复.md)。拒绝后仍能匿名游玩和上榜。
 
 本地 WebGL 实际画面（浏览器模拟 wx 接口，不代表微信真机验收）：
 
