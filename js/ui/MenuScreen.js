@@ -1,9 +1,12 @@
 import { button, panel, centeredPanel } from './UIHelpers.js';
+import { CLASSIC, modeName } from '../config/modes.js';
 
 export default class MenuScreen {
   layout(camera) {
     const y = camera.safeTop + (camera.height - camera.safeTop - camera.safeBottom) * 0.66;
-    return { start: { x: 150, y, w: 450, h: 98 }, help: { x: 150, y: y + 128, w: 205, h: 64 }, settings: { x: 395, y: y + 128, w: 205, h: 64 } };
+    return { classic: { x: 150, y: y - 177, w: 205, h: 58 }, endless: { x: 395, y: y - 177, w: 205, h: 58 },
+      start: { x: 150, y, w: 450, h: 98 }, help: { x: 135, y: y + 128, w: 140, h: 64 },
+      settings: { x: 475, y: y + 128, w: 140, h: 64 }, leaderboard: { x: 300, y: y + 128, w: 150, h: 64 } };
   }
   settingsLayout(camera) {
     const p = centeredPanel(camera, 435);
@@ -13,8 +16,10 @@ export default class MenuScreen {
     const h = r.camera.height, top = r.camera.safeTop, usable = h - top - r.camera.safeBottom, layout = this.layout(r.camera);
     r.label('颠个锅', 375, top + usable * 0.16, 76, '#443b32', 'center', true);
     r.label('颠起来，接住你的下一次连锁', 375, top + usable * 0.225, 27, '#8c785f', 'center');
-    r.drawMenuHero(game, top + usable * 0.46);
-    r.label('最高分', 375, layout.start.y - 75, 23, '#8c785f', 'center');
+    r.drawMenuHero(game, top + usable * 0.40);
+    button(r, layout.classic, '经典模式', game.mode === CLASSIC); button(r, layout.endless, '无尽模式', game.mode !== CLASSIC);
+    r.label(game.mode === CLASSIC ? '三次机会，挑战你的最高分' : '100 分起步 · 掉落扣分 · 负分结束', 375, layout.start.y - 96, 22, '#8c785f', 'center');
+    r.label(modeName(game.mode) + '最高分', 375, layout.start.y - 65, 22, '#8c785f', 'center');
     r.number(game.bestScore, 375, layout.start.y - 38, 38, '#514236', 'center');
     button(r, layout.start, '开始颠锅'); button(r, layout.help, '玩法', false); button(r, layout.settings, '设置', false);
     r.label('一根手指，颠出一锅好戏', 375, h - r.camera.safeBottom - 36, 23, '#fff5e7', 'center');

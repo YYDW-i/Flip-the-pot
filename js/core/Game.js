@@ -25,13 +25,15 @@ import MenuScreen from '../ui/MenuScreen.js';
 import TutorialOverlay from '../ui/TutorialOverlay.js';
 import GameOverScreen from '../ui/GameOverScreen.js';
 import { inside } from '../utils/MathUtils.js';
+import { CLASSIC, ENDLESS, modeId } from '../config/modes.js';
 
 export default class Game {
   constructor(api = wx, options = {}) {
     this.api = api; this.config = Object.assign({}, config); this.disposed = false;
     this.state = State.BOOT; this.visualTime = 0; this.runCounter = 0; this.seed = options.seed === undefined ? Date.now() >>> 0 : options.seed;
     this.local = new LocalSaveService(api);
-    this.bestScore = this.local.data.bestScore; this.tutorialCompleted = this.local.data.tutorialCompleted; this.settingsOpen = false;
+    this.mode = this.local.data.selectedMode;
+    this.bestScore = this.local.best(this.mode); this.tutorialCompleted = this.local.data.tutorialCompleted; this.settingsOpen = false;
     this.canvas = api.createCanvas();
     this.camera = new Camera(this.canvas, this.config, api);
     this.renderer = new RendererGL(this.canvas, this.camera, this.config, api);
@@ -51,8 +53,9 @@ export default class Game {
     this.recipe.onRecipe = (recipe, x, y, points, air) => this.recipeFeedback(recipe, x, y, points, air);
     this.merge.onMerge = (body, points, air) => this.mergeFeedback(body, points, air);
     this.saveSystem.onSave = (body, points) => { this.particles.text('救回来了！ +' + points, body.position.x, body.position.y - 65, '#3e8561'); this.haptics.light(); };
-    this.world.onPair = (a, b) => this.recipe.collide(a, b) || this.merge.collide(a, b);
+    this.world.onPair = (a, b) => !this.endingTime && (this.recipe.collide(a, b) || this.merge.collide(a, b));
     this.world.onPanContact = (body, impact, index) => {
+      if (this.endingTime) return;
       this.saveSystem.land(body, index, this.world.time);
       if (this.state === State.TUTORIAL) this.tutorial.land(body, index, this.world.time);
     };
@@ -77,7 +80,7 @@ export default class Game {
     this.cloud = new CloudService(api);
     this.cloud.bootstrap().then(data => {
       if (this.disposed) return;
-      this.bestScore = this.local.mergeProfile(data.profile).bestScore;
+      this.local.mergeProfile(data.profile); this.bestScore = this.local.best(this.mode);
       // 远程参数只在下一局重置时应用，不能改变正在进行的物理局面。
       this.pendingConfig = validateRemoteConfig(data.config, this.config);
     }).catch(() => { console.warn('PanToss 云启动检查失败，继续本地游戏'); });
@@ -87,11 +90,12 @@ export default class Game {
   active() { return (this.state === State.PLAYING || this.state === State.TUTORIAL) && !this.endingTime; }
   resetRun() {
     if (this.pendingConfig) { Object.assign(this.config, this.pendingConfig); this.pendingConfig = null; }
-    this.world.reset(); this.score.reset(); this.combo.reset(); this.particles.reset();
+    this.world.reset(); this.score.reset(this.mode === ENDLESS ? this.config.ENDLESS_START_SCORE : 0); this.combo.reset(); this.particles.reset();
     this.recipe.reset();
     this.pot = new Pot(this.config, this.camera.width, this.camera.height, this.camera.safeBottom);
     this.world.pot = this.pot; this.saveSystem.pot = this.pot;
-    this.lostCount = 0; this.runDuration = 0; this.endingTime = 0; this.result = null;
+    if (this.mode === CLASSIC) this.lostCount = 0; else delete this.lostCount;
+    this.runDuration = 0; this.endingTime = 0; this.result = null;
     this.runId = Date.now().toString(36) + '-' + this.seed.toString(36) + '-' + this.runCounter;
     this.slowTime = 0; this.lastSlowTime = -10; this.settingsOpen = false;
     this.spawner.reset((this.seed + this.runCounter++) >>> 0); this.tutorial.reset();
@@ -103,6 +107,11 @@ export default class Game {
     initial.forEach((type, i) => this.world.add(type, 1, this.pot.positionX + (i - (initial.length - 1) / 2) * this.config.INITIAL_SPACING, this.pot.positionY - 8));
   }
   start(forceTutorial = false) { this.resetRun(); this.setState(forceTutorial || !this.tutorialCompleted ? State.TUTORIAL : State.PLAYING); }
+  selectMode(value) {
+    if (this.state !== State.MENU) return;
+    this.mode = modeId(value); this.local.save({ selectedMode: this.mode }); this.bestScore = this.local.best(this.mode);
+    this.resetRun();
+  }
   completeTutorial() { this.tutorialCompleted = true; this.local.save({ tutorialCompleted: true }); this.start(); }
   pause() { if (this.state === State.PLAYING || this.state === State.TUTORIAL) { this.pauseReturn = this.state; this.setState(State.PAUSED); } }
   resume() { if (this.state === State.PAUSED) { this.loop.resetClock(); this.setState(this.pauseReturn || State.PLAYING); } }
@@ -127,7 +136,9 @@ export default class Game {
         return;
       }
       const l = this.menu.layout(this.camera);
-      if (inside(point, l.start)) this.start();
+      if (inside(point, l.classic)) this.selectMode(CLASSIC);
+      else if (inside(point, l.endless)) this.selectMode(ENDLESS);
+      else if (inside(point, l.start)) this.start();
       else if (inside(point, l.help)) this.start(true);
       else if (inside(point, l.settings)) this.settingsOpen = true;
     } else if (this.state === State.PAUSED) {
@@ -192,9 +203,13 @@ export default class Game {
       if (!lost) continue;
       body.alive = false;
       if (this.state === State.TUTORIAL) continue;
-      this.lostCount++; this.audio.playLose(); this.haptics.light(); this.particles.shake(4, 0.16);
-      this.particles.text('掉了一份！', Math.max(100, Math.min(this.camera.width - 100, p.x)), this.pot.baseY + 90, '#b54b36', 30);
-      if (this.lostCount >= c.MISS_LIMIT) { this.endingTime = c.GAME_OVER_SLOW_DURATION; this.input.cancel(); break; }
+      let message = '掉了一份！';
+      if (this.mode === ENDLESS) message = '掉落 Lv' + body.level + ' −' + this.score.lose(body.level);
+      else this.lostCount++;
+      this.audio.playLose(); this.haptics.light(); this.particles.shake(4, 0.16);
+      this.particles.text(message, Math.max(150, Math.min(this.camera.width - 150, p.x)), this.pot.baseY + 90, '#b54b36', 30);
+      const ended = this.mode === ENDLESS ? this.score.score < 0 : this.lostCount >= c.MISS_LIMIT;
+      if (ended) { this.endingTime = c.GAME_OVER_SLOW_DURATION; this.input.cancel(); break; }
     }
     this.world.compact();
     if (this.state === State.TUTORIAL && this.tutorial.step < 3 && this.world.bodies.length < 3) {
@@ -203,11 +218,11 @@ export default class Game {
   }
   finishRun() {
     if (this.result) return;
-    this.result = { runId: this.runId, score: this.score.score, maxCombo: this.combo.maxCombo, duration: Math.max(0.01, this.runDuration), recipesCompleted: this.score.recipesCompleted };
-    this.bestScore = this.local.recordRun(this.result).bestScore;
+    this.result = { runId: this.runId, mode: this.mode, score: this.score.peak, finalScore: this.score.score, maxCombo: this.combo.maxCombo, duration: Math.max(0.01, this.runDuration), recipesCompleted: this.score.recipesCompleted };
+    this.local.recordRun(this.result); this.bestScore = this.local.best(this.mode);
     this.audio.playGameOver(); this.setState(State.GAME_OVER);
     // 一局只提交一次；网络失败保留本地结果，不阻塞再开一局。
-    this.cloud.saveRunResult(this.result).then(profile => { if (!this.disposed) this.bestScore = this.local.mergeProfile(profile).bestScore; }).catch(() => {});
+    this.cloud.saveRunResult(this.result).then(profile => { if (!this.disposed) { this.local.mergeProfile(profile); this.bestScore = this.local.best(this.mode); } }).catch(() => {});
   }
   resize() {
     this.pause(); this.input.cancel(); const oldY = this.pot.baseY;
