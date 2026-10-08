@@ -22,6 +22,7 @@ export default class MenuScreen {
     r.label(modeName(game.mode) + '最高分', 375, layout.start.y - 65, 22, '#8c785f', 'center');
     r.number(game.bestScore, 375, layout.start.y - 38, 38, '#514236', 'center');
     button(r, layout.start, '开始颠锅'); button(r, layout.help, '玩法', false); button(r, layout.settings, '设置', false);
+    button(r, layout.leaderboard, '排行榜', false);
     r.label('一根手指，颠出一锅好戏', 375, h - r.camera.safeBottom - 36, 23, '#fff5e7', 'center');
     if (!game.settingsOpen) return;
     const s = this.settingsLayout(r.camera); panel(r, s.panel);

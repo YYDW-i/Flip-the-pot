@@ -26,12 +26,17 @@ import TutorialOverlay from '../ui/TutorialOverlay.js';
 import GameOverScreen from '../ui/GameOverScreen.js';
 import { inside } from '../utils/MathUtils.js';
 import { CLASSIC, ENDLESS, modeId } from '../config/modes.js';
+import LeaderboardService from '../services/LeaderboardService.js';
+import UserInfoService from '../services/UserInfoService.js';
+import LeaderboardScreen from '../ui/LeaderboardScreen.js';
 
 export default class Game {
   constructor(api = wx, options = {}) {
     this.api = api; this.config = Object.assign({}, config); this.disposed = false;
     this.state = State.BOOT; this.visualTime = 0; this.runCounter = 0; this.seed = options.seed === undefined ? Date.now() >>> 0 : options.seed;
     this.local = new LocalSaveService(api);
+    this.userInfo = new UserInfoService(api); this.nickname = ''; this.boardToken = 0; this.leaderboardOpen = false;
+    this.leaderboardScreen = new LeaderboardScreen();
     this.mode = this.local.data.selectedMode;
     this.bestScore = this.local.best(this.mode); this.tutorialCompleted = this.local.data.tutorialCompleted; this.settingsOpen = false;
     this.canvas = api.createCanvas();
@@ -70,7 +75,7 @@ export default class Game {
     this.loop.onFatal = error => {
       try { if (api.showModal) api.showModal({ title: '运行异常', content: '游戏已停止，请重新进入。详情见开发者工具控制台：' + error.message, showCancel: false }); } catch (e) {}
     };
-    this.onHide = () => { this.pause(); this.input.cancel(); this.audio.stop(); this.loop.stop(); };
+    this.onHide = () => { this.userInfo.clear(); this.pause(); this.input.cancel(); this.audio.stop(); this.loop.stop(); };
     this.onShow = () => { this.input.cancel(); this.loop.start(); };
     this.onResize = () => this.resize();
     if (api.onHide) api.onHide(this.onHide);
@@ -78,15 +83,57 @@ export default class Game {
     if (api.onWindowResize) api.onWindowResize(this.onResize);
     this.resetRun(); this.setState(State.MENU);
     this.cloud = new CloudService(api);
+    this.leaderboard = new LeaderboardService(this.cloud);
     this.cloud.bootstrap().then(data => {
       if (this.disposed) return;
       this.local.mergeProfile(data.profile); this.bestScore = this.local.best(this.mode);
+      if (data.profile && data.profile.nickname) this.nickname = data.profile.nickname;
       // 远程参数只在下一局重置时应用，不能改变正在进行的物理局面。
       this.pendingConfig = validateRemoteConfig(data.config, this.config);
     }).catch(() => { console.warn('PanToss 云启动检查失败，继续本地游戏'); });
     if (options.autoStart !== false) this.loop.start();
   }
-  setState(state) { this.state = state; if (this.input) this.input.cancel(); }
+  setState(state) { if (state !== State.MENU) this.closeLeaderboard(); this.state = state; if (this.input) this.input.cancel(); }
+  closeLeaderboard() { this.leaderboardOpen = false; this.boardToken++; this.userInfo.clear(); }
+  async loadLeaderboard(mode = this.mode, page = 0) {
+    this.userInfo.clear(); this.leaderboardOpen = true; const token = ++this.boardToken;
+    this.board = { mode: modeId(mode), page, entries: [], hasNext: false, mine: null, phase: 'loading', authMessage: '' };
+    try {
+      const result = await this.leaderboard.getEntries(this.board.mode, page);
+      if (this.disposed || token !== this.boardToken) return;
+      if (result && Array.isArray(result.entries)) Object.assign(this.board, result, { phase: 'ready' });
+      else this.board.phase = 'offline';
+    } catch (e) { if (!this.disposed && token === this.boardToken) this.board.phase = 'offline'; }
+  }
+  authorizeNickname() {
+    if (this.userInfo.phase !== 'idle') return;
+    if (!this.cloud.available) { this.board.authMessage = '请先连接云排行榜，再授权昵称'; return; }
+    const token = this.boardToken;
+    this.userInfo.prepare(this.leaderboardScreen.layout(this.camera).authorize, this.camera,
+      message => { if (this.leaderboardOpen && token === this.boardToken) this.board.authMessage = message; },
+      async nickname => {
+        try {
+          const profile = await this.leaderboard.updateIdentity(nickname);
+          if (this.disposed) return;
+          if (profile) { this.nickname = profile.nickname; this.local.mergeProfile(profile); this.bestScore = this.local.best(this.mode); }
+          if (!this.leaderboardOpen || token !== this.boardToken) return;
+          if (profile) this.loadLeaderboard(this.board.mode, this.board.page);
+          else this.board.authMessage = '昵称保存失败，请稍后重试';
+        } catch (e) { if (this.leaderboardOpen && token === this.boardToken) this.board.authMessage = '昵称保存失败，请稍后重试'; }
+      });
+  }
+  tapLeaderboard(point) {
+    const l = this.leaderboardScreen.layout(this.camera), b = this.board;
+    if (inside(point, l.close)) this.closeLeaderboard();
+    else if (inside(point, l.classic)) this.loadLeaderboard(CLASSIC);
+    else if (inside(point, l.endless)) this.loadLeaderboard(ENDLESS);
+    else if (inside(point, l.authorize)) this.authorizeNickname();
+    else if (b.phase !== 'loading') {
+      if (inside(point, l.previous) && b.page > 0) this.loadLeaderboard(b.mode, b.page - 1);
+      else if (inside(point, l.next) && b.hasNext) this.loadLeaderboard(b.mode, b.page + 1);
+      else if (inside(point, l.refresh)) this.loadLeaderboard(b.mode, b.page);
+    }
+  }
   active() { return (this.state === State.PLAYING || this.state === State.TUTORIAL) && !this.endingTime; }
   resetRun() {
     if (this.pendingConfig) { Object.assign(this.config, this.pendingConfig); this.pendingConfig = null; }
@@ -127,6 +174,7 @@ export default class Game {
   }
   tap(point) {
     if (this.state === State.MENU) {
+      if (this.leaderboardOpen) { this.tapLeaderboard(point); return; }
       if (this.settingsOpen) {
         const s = this.menu.settingsLayout(this.camera);
         if (inside(point, s.sound)) this.audio.enabled = !this.audio.enabled;
@@ -141,6 +189,7 @@ export default class Game {
       else if (inside(point, l.start)) this.start();
       else if (inside(point, l.help)) this.start(true);
       else if (inside(point, l.settings)) this.settingsOpen = true;
+      else if (inside(point, l.leaderboard)) this.loadLeaderboard();
     } else if (this.state === State.PAUSED) {
       const l = this.gameOver.pauseLayout(this.camera);
       if (inside(point, l.resume)) this.resume(); else if (inside(point, l.restart)) this.start();
@@ -225,6 +274,7 @@ export default class Game {
     this.cloud.saveRunResult(this.result).then(profile => { if (!this.disposed) { this.local.mergeProfile(profile); this.bestScore = this.local.best(this.mode); } }).catch(() => {});
   }
   resize() {
+    this.userInfo.clear();
     this.pause(); this.input.cancel(); const oldY = this.pot.baseY;
     this.camera.resize(); this.pot.resize(this.camera.height, this.camera.safeBottom); this.pot.updateSegments();
     const dy = this.pot.baseY - oldY;
@@ -233,6 +283,7 @@ export default class Game {
   }
   destroy() {
     this.disposed = true;
+    this.closeLeaderboard(); this.userInfo.destroy();
     this.loop.stop(); this.input.destroy(); this.renderer.destroy(); this.audio.destroy();
     if (this.api.offHide) this.api.offHide(this.onHide);
     if (this.api.offShow) this.api.offShow(this.onShow);

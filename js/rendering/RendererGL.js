@@ -83,7 +83,10 @@ export default class RendererGL {
     gl.viewport(0, 0, this.canvas.width, this.canvas.height); gl.clearColor(1, 0.95, 0.86, 1); gl.clear(gl.COLOR_BUFFER_BIT);
     this.batch.begin(camera.width, camera.height); this.text.begin(camera.width, camera.height);
     this.background(game.pot);
-    if (game.state === State.MENU) { game.menu.render(this, game); this.batch.flush(); return; }
+    if (game.state === State.MENU) {
+      if (game.leaderboardOpen) game.leaderboardScreen.render(this, game); else game.menu.render(this, game);
+      this.batch.flush(); return;
+    }
     const shake = game.particles.shakePower * Math.min(1, game.particles.shakeTime * 8);
     this.batch.root(Math.sin(game.world.time * 90) * shake, Math.cos(game.world.time * 110) * shake * 0.5);
     this.drawPot(game.pot);
